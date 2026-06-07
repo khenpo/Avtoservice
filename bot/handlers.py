@@ -340,7 +340,7 @@ async def send_map(callback: types.CallbackQuery):
         except:
             pass
 
-        photo = types.FSInputFile("../maps/map.png")
+        photo = types.FSInputFile("/maps/map.png")
         await callback.message.answer_photo(photo,
                                             caption="Мы находимся здесь: 55.7558, 37.6173",
                                             reply_markup=main_menu())
