@@ -3,9 +3,9 @@
 # run_bot.py
 import asyncio
 import os
-from bot_instance import dp, bot
-from handlers import router
-from logger_setup import logger, setup_logging
+from bot.bot_instance import dp, bot
+from bot.handlers import router
+from backend.logger_setup import logger, setup_logging
 from dotenv import load_dotenv
 
 # Укажите ваш токен здесь или в переменных окружения
@@ -14,6 +14,8 @@ load_dotenv(env_path if os.path.exists(env_path) else None)
 
 TOKEN = os.environ.get("BOT_TOKEN")
 REDIS_URL = os.environ.get("REDIS_URL") # URL  FastAPI внутри сети Docker
+
+
 
 setup_logging("bot")
 
@@ -27,7 +29,7 @@ async def main():
 
     logger.info("Бот запущен локально в режиме Polling...")
 
-    from handlers import set_main_menu
+    from bot.handlers import set_main_menu
     await set_main_menu(bot)
 
     try:

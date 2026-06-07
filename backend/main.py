@@ -4,6 +4,9 @@ main.py
 """
 
 # Добавьте RedirectResponse в импорты сверху
+from contextlib import asynccontextmanager
+import os
+
 from fastapi import FastAPI, HTTPException, Request, Form, Depends, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -16,15 +19,69 @@ import datetime
 from typing import List
 
 
-from database import SessionLocal, engine, Application, Base, generate_next_order_number
-from llm import get_ai_work_summary
-from schemas import ExternalOrder, OrderShortResponse, VehicleResponse
-from logger_setup import setup_logging, logger
+from backend.database import SessionLocal, engine, Application, Base, generate_next_order_number
+from backend.llm import get_ai_work_summary
+from backend.schemas import ExternalOrder, OrderShortResponse, VehicleResponse
+from backend.logger_setup import setup_logging, logger
+
+from aiogram import types
+from bot.bot_instance import bot, dp
+from bot.handlers import router # ваш роутер с хендлерами
 
 
 # Инициализируем логи при старте
 setup_logging("backend")
 logger.info("Приложение запущено")
+
+from dotenv import load_dotenv
+
+# Укажите ваш токен здесь или в переменных окружения
+env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
+load_dotenv(env_path if os.path.exists(env_path) else None)
+
+BASE_URL = os.getenv("BASE_URL") # Например, https://yourdomain.com
+WEBHOOK_PATH = f"/webhook/{os.getenv('BOT_TOKEN')}"
+WEBHOOK_URL = f"{BASE_URL}{WEBHOOK_PATH}"
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Управление жизненным циклом приложения: заменяет on_event startup/shutdown
+    """
+    # --- ДЕЙСТВИЯ ПРИ ЗАПУСКЕ (STARTUP) ---
+    logger.info("Инициализация бота и вебхука...")
+    
+    # Подключаем обработчики
+    dp.include_router(router)
+    
+    # Устанавливаем вебхук
+    await bot.set_webhook(
+        url=WEBHOOK_URL,
+        drop_pending_updates=True,
+        allowed_updates=["message", "callback_query", "voice"]
+    )
+    logger.info(f"Webhook установлен: {WEBHOOK_URL}")
+
+    yield  # В этой точке сервер начинает принимать запросы
+
+    # --- ДЕЙСТВИЯ ПРИ ОСТАНОВКЕ (SHUTDOWN) ---
+    logger.info("Остановка приложения, удаление вебхука...")
+    await bot.delete_webhook()
+    await bot.session.close()
+    logger.info("Сессии закрыты.")
+
+# Инициализируем FastAPI с параметром lifespan
+app = FastAPI(lifespan=lifespan)
+
+# Эндпоинт для вебхука
+@app.post(WEBHOOK_PATH)
+async def bot_webhook(request: Request):
+    """Прием обновлений от Telegram"""
+    update_data = await request.json()
+    update = types.Update.model_validate(update_data, context={"bot": bot})
+    await dp.feed_update(bot, update)
+    return {"status": "ok"}
+
 
 # Создаем таблицы
 Base.metadata.create_all(bind=engine)
@@ -48,6 +105,7 @@ def get_db():
         yield db
     finally:
         db.close()
+        
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
@@ -100,9 +158,79 @@ async def log_requests(request: Request, call_next):
     return response
 
 
+
 # --- ГЛАВНАЯ СТРАНИЦА ---
 
 @app.get("/", response_class=HTMLResponse)
+async def root_stub():
+    """
+    Красивая заглушка для корневой страницы сервера
+    """
+    return """
+    <!DOCTYPE html>
+    <html lang="ru">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Автосервис - Telegram Бот</title>
+        <style>
+            body {
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                background-color: #1a1a1a;
+                color: #ffffff;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                height: 100vh;
+                margin: 0;
+            }
+            .container {
+                text-align: center;
+                background: #2d2d2d;
+                padding: 40px;
+                border-radius: 15px;
+                box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+                border: 1px solid #3d3d3d;
+                max-width: 400px;
+            }
+            h1 { color: #f39c12; margin-bottom: 10px; }
+            p { color: #bdc3c7; line-height: 1.6; }
+            .btn {
+                display: inline-block;
+                margin-top: 25px;
+                padding: 12px 25px;
+                background-color: #f39c12;
+                color: #fff;
+                text-decoration: none;
+                border-radius: 5px;
+                font-weight: bold;
+                transition: background 0.3s;
+            }
+            .btn:hover { background-color: #e67e22; }
+            .footer { margin-top: 30px; font-size: 0.8em; color: #7f8c8d; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>🛠 Автосервис AVTOTAL</h1>
+            <p>Добро пожаловать! Мы используем систему управления заказами по ремонту автомобилей.</p>
+            <p>Для записи на сервис, проверки статуса заказа или связи с мастером используйте нашего официального бота:</p>
+            
+            <!-- ЗАМЕНИТЕ ССЫЛКУ НА ВАШЕГО БОТА -->
+            <a href="https://t.me/abtotal_test_bot" class="btn">Открыть Telegram Бота</a>
+            
+            <div class="footer">
+                © 2024 Система управления автосервисом<br>
+                г. Москва, проспект 60-лет Октября, д. 10
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    
+# Страница с текущими заказами (для оператора)
+
+@app.get("/tasks", response_class=HTMLResponse)
 async def index(request: Request, db: Session = Depends(get_db)):
     """
     Отображение главной страницы со списком заявок.

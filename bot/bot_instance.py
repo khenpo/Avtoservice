@@ -7,7 +7,7 @@ from aiogram.fsm.storage.redis import RedisStorage
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from dotenv import load_dotenv
-from logger_setup import logger
+from backend.logger_setup import logger
 import os
 
 env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
@@ -20,7 +20,10 @@ REDIS_URL = os.environ.get("REDIS_URL") # URL  FastAPI внутри сети Doc
 
 
 bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-#storage = RedisStorage.from_url(REDIS_URL)
-from aiogram.fsm.storage.memory import MemoryStorage
-storage = MemoryStorage()
+
+# from aiogram.fsm.storage.memory import MemoryStorage
+# storage = MemoryStorage() # Вместо RedisStorage
+
+storage = RedisStorage(REDIS_URL)
+
 dp = Dispatcher(storage=storage)

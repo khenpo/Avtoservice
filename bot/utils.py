@@ -4,7 +4,7 @@ import httpx
 import os
 import markdown
 import re
-from logger_setup import logger
+from backend.logger_setup import logger
 from dotenv import load_dotenv
 
 env_path = os.path.join(os.path.dirname(__file__), '..', '.env')

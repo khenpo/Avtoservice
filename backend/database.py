@@ -3,7 +3,7 @@
 - SQLAlchemy модели для хранения данных о заявках и клиентах.
 - Функция для инициализации базы данных."""
 
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 import datetime
@@ -15,6 +15,8 @@ SQLALCHEMY_DATABASE_URL = "sqlite:///../service_station.db"
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
 )
+with engine.connect() as conn:
+    conn.execute(text("PRAGMA journal_mode=WAL;"))
 SessionLocal = sessionmaker(        # pylint: disable=invalid-name
     autocommit=False, autoflush=False, bind=engine)
 

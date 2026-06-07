@@ -13,9 +13,9 @@ from aiogram.exceptions import TelegramBadRequest
 from loguru import logger
 from dotenv import load_dotenv
 
-from bot_instance import bot
-from states import Registration, CreateOrder, EmergencyState
-from utils import get_active_orders, delete_vehicle, API_BASE_URL, get_user_vehicles_data, md_to_tg_html
+from bot.bot_instance import bot
+from bot.states import Registration, CreateOrder, EmergencyState
+from bot.utils import get_active_orders, delete_vehicle, API_BASE_URL, get_user_vehicles_data, md_to_tg_html
 
 router = Router()
 env_path = os.path.join(os.path.dirname(__file__), '..', '.env')

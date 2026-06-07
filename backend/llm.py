@@ -4,7 +4,7 @@
 import os
 from dotenv import load_dotenv
 import httpx
-from logger_setup import logger
+from backend.logger_setup import logger
 from typing import List
 
 # Конфигурация OpenRouter
