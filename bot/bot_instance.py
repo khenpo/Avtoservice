@@ -8,6 +8,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from dotenv import load_dotenv
 from backend.logger_setup import logger
+from redis.asyncio import Redis
 import os
 
 env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
@@ -24,6 +25,9 @@ bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 # from aiogram.fsm.storage.memory import MemoryStorage
 # storage = MemoryStorage() # Вместо RedisStorage
 
-storage = RedisStorage(REDIS_URL)
+
+redis_client = Redis.from_url("redis://redis:6379/0")
+storage = RedisStorage(redis=redis_client)
+
 
 dp = Dispatcher(storage=storage)
