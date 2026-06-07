@@ -1,28 +1,21 @@
+version: '3.8'
+
 services:
-  fastapi_server:
-    build: ./backend
-    # Команда для запуска FastAPI внутри контейнера
-    command: uvicorn main:app --host 0.0.0.0 --port 8000
-     
-    environment:
-      # Указываем путь к БД внутри контейнера для FastAPI
-      - DATABASE_URL=sqlite:////app/data/service_station.db
-    # Порт 8000 будет доступен ТОЛЬКО внутри сети Docker для бота. Снаружи сервера он закрыт.
-    expose:
-      - "8000"
+  backend:
+    build: 
+      context: .
+      dockerfile: backend/Dockerfile
     restart: always
+    env_file: .env
+    ports:
+      - "8000:8000"
     volumes:
-      - ./service_station.db:/app/data/service_station.db
+      - ./service_station.db:/app/service_station.db
       - ./logs:/app/logs
       - ./maps:/app/maps
-
-  tg_bot:
-    build: ./bot
-    command: python bot.py
     depends_on:
-      - fastapi_server  # Бот запустится только после старта FastAPI
-    restart: always
+      - redis
 
-    volumes:
-      - ./data:/app/  
-      - ./  logs:/app/logs
+  redis:
+    image: redis:alpine
+    restart: always
