@@ -8,10 +8,14 @@ import html
 from loguru import logger
 from dotenv import load_dotenv
 
-load_dotenv()
 
 TELEGRAM_BOT_TOKEN = os.environ.get("BOT_TOKEN")
 TELEGRAM_ADMIN_ID = os.environ.get("ADMIN_ID")
+
+# Ищем .env в текущей папке или на уровень выше (в корне)
+env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
+load_dotenv(env_path if os.path.exists(env_path) else None)
+
 
 def send_telegram_error(message: str):
     """

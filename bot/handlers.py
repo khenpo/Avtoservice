@@ -13,12 +13,13 @@ from aiogram.exceptions import TelegramBadRequest
 from loguru import logger
 from dotenv import load_dotenv
 
-from .bot_instance import bot
-from .states import Registration, CreateOrder, EmergencyState
-from .utils import get_active_orders, delete_vehicle, API_BASE_URL, get_user_vehicles_data, md_to_tg_html
+from bot_instance import bot
+from states import Registration, CreateOrder, EmergencyState
+from utils import get_active_orders, delete_vehicle, API_BASE_URL, get_user_vehicles_data, md_to_tg_html
 
 router = Router()
-load_dotenv()
+env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
+load_dotenv(env_path if os.path.exists(env_path) else None)
 
 MASTER_ID = os.environ.get("MASTER_ID")
 
@@ -339,7 +340,7 @@ async def send_map(callback: types.CallbackQuery):
         except:
             pass
 
-        photo = types.FSInputFile("./maps/map.png")
+        photo = types.FSInputFile("../maps/map.png")
         await callback.message.answer_photo(photo,
                                             caption="Мы находимся здесь: 55.7558, 37.6173",
                                             reply_markup=main_menu())

@@ -13,7 +13,8 @@ from typing import List
 #OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 #MODEL = "nvidia/nemotron-3-super-120b-a12b:free" # Можно заменить на "google/gemini-pro-1.5" или др.
 
-load_dotenv()
+env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
+load_dotenv(env_path if os.path.exists(env_path) else None)
 
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 OPENROUTER_URL = os.environ.get("OPENROUTER_URL")

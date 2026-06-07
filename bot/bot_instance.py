@@ -10,13 +10,14 @@ from dotenv import load_dotenv
 from logger_setup import logger
 import os
 
-load_dotenv()
+env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
+load_dotenv(env_path if os.path.exists(env_path) else None)
+
 
 TOKEN = os.environ.get("BOT_TOKEN")
 REDIS_URL = os.environ.get("REDIS_URL") # URL  FastAPI внутри сети Docker
 
-# Настройка Loguru
-logger.add("logs/bot_errors.log", rotation="1 week", level="ERROR")
+
 
 bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 #storage = RedisStorage.from_url(REDIS_URL)

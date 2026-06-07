@@ -10,7 +10,7 @@ import datetime
 
 # Настройка подключения к SQLite
 # Все данные будут храниться в файле service_station.db
-SQLALCHEMY_DATABASE_URL = "sqlite:///./service_station.db"
+SQLALCHEMY_DATABASE_URL = "sqlite:///../service_station.db"
 
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}

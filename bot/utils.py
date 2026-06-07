@@ -7,8 +7,10 @@ import re
 from logger_setup import logger
 from dotenv import load_dotenv
 
-load_dotenv()
+env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
+load_dotenv(env_path if os.path.exists(env_path) else None)
 # Базовый URL вашего FastAPI (в Docker это имя сервиса, локально - localhost)
+
 API_BASE_URL = os.environ.get("API_BASE_URL")
 
 # Карта статусов (дублируем из main.py или импортируем, если возможно)
