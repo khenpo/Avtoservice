@@ -87,7 +87,11 @@ async def bot_webhook(request: Request):
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
-templates = Jinja2Templates(directory="templates")
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+templates_path = os.path.join(current_dir, "templates")
+
+templates = Jinja2Templates(directory=templates_path)
 
 STATUS_MAP = {
     1: "Новая", 2: "Экстренная", 3: "Подтверждена",
