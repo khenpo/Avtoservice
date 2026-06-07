@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Панель Оператора | Автосервис</title>
+    <!-- Подключаем HTMX и Tailwind -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 p-4 md:p-8">
+
+    <div class="max-w-7xl mx-auto">
+        
+        <!-- Шапка и Навигация -->
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 bg-white p-6 rounded-xl shadow-sm">
+            <div>
+                <h1 class="text-3xl font-extrabold text-gray-900 tracking-tight">Текущие работы</h1>
+                <p class="text-gray-500">Управление активными нарядами в цеху</p>
+            </div>
+            
+            <div class="flex flex-wrap gap-2">
+                <a href="/clients" class="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition font-medium text-sm">
+                    Клиенты
+                </a>
+                <a href="/archive" class="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition font-medium text-sm">
+                    Архив
+                </a>
+                <a href="/new-request" class="px-4 py-2 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg hover:bg-blue-100 transition font-medium text-sm">
+                    + Ввод заявки
+                </a>
+            </div>
+        </div>
+
+        <!-- ПАНЕЛЬ ДЕЙСТВИЙ (Сверху от списка) -->
+        <div class="mb-6 flex flex-col md:flex-row gap-4 items-center">
+            <!-- Кнопка принять в работу из быстрой очереди -->
+            <!-- <button hx-get="/modals/add" 
+                    hx-target="#modal-container" 
+                    class="w-full md:w-auto bg-green-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-green-700 shadow-lg shadow-green-200 transition-all transform active:scale-95 flex items-center justify-center">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path>
+                </svg>
+                Принять в работу
+            </button> -->
+
+            <!-- Ссылка на страницу новых заявок с индикатором -->
+            <a href="/requests" class="w-full md:w-auto bg-blue-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all flex items-center justify-center">
+                Входящие заявки
+                <span class="ml-2 bg-white text-blue-600 text-xs px-2 py-0.5 rounded-full">New</span>
+            </a>
+        </div>
+
+        <!-- Контейнер основной таблицы -->
+        <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+            <div id="app-list" 
+                 hx-get="/list" 
+                 hx-trigger="load, refreshList from:body"
+                 class="min-h-[300px]">
+                <!-- Сюда HTMX подгрузит app_table.html -->
+                <div class="flex justify-center items-center p-20">
+                    <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Блок ИИ Сводки (LLM) под списком -->
+        <div class="mt-8">
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-purple-100">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-bold text-purple-900 flex items-center">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                        Анализ загрузки нейросетью
+                    </h3>
+                    <button hx-get="/api/work-summary" 
+                            hx-target="#ai-response" 
+                            hx-indicator="#ai-spinner"
+                            class="text-sm bg-purple-600 text-white px-4 py-1.5 rounded-lg hover:bg-purple-700 transition">
+                        Обновить прогноз
+                    </button>
+                </div>
+                <div id="ai-response" class="text-sm text-gray-600 italic">
+                    Нажмите кнопку для получения аналитики по текущим работам...
+                </div>
+                <div id="ai-spinner" class="htmx-indicator flex justify-center p-4">
+                    <div class="animate-bounce text-purple-600 font-bold">Нейросеть думает...</div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Контейнер для модальных окон -->
+    <div id="modal-container"></div>
+
+    <script>
+        function closeModal() {
+            document.getElementById('modal-container').innerHTML = '';
+        }
+
+        // Закрытие модалок при клике вне окна или успешном ответе
+        document.body.addEventListener('refreshList', closeModal);
+        document.addEventListener('keydown', (e) => { if(e.key === 'Escape') closeModal(); });
+    </script>
+</body>
+</html>

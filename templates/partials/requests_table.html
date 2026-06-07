@@ -1,0 +1,119 @@
+<div class="overflow-x-auto border rounded-xl bg-white shadow-sm">
+    <table class="w-full text-left border-collapse">
+        <thead>
+            <tr class="bg-gray-50 border-b text-gray-600 text-xs uppercase tracking-wider font-bold">
+                <th class="p-4">Дата</th>
+                <th class="p-4">Статус</th>
+                <th class="p-4">Клиент</th>
+                <th class="p-4">Автомобиль</th>
+                <th class="p-4">Детали задачи</th>
+                <th class="p-4 text-right">Действия</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+            {% for app in apps %}
+            <tr class="hover:bg-gray-50 transition-colors">
+                <!-- Дата -->
+                <td class="p-4 text-sm text-gray-500 whitespace-nowrap">
+                    {{ app.date.strftime('%d.%m %H:%M') }}
+                </td>
+
+                <!-- Статус -->
+                <td class="p-4">
+                    {% if app.status == 2 %}
+                    <!-- Статус ЭКСТРЕННАЯ (ID 2) -->
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-800 border border-red-200 animate-pulse">
+                        <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z"></path>
+                        </svg>
+                        Экстренная
+                    </span>
+                    {% elif app.status == 3 %}
+                    <!-- Статус ПОДТВЕРЖДЕНА (ID 3) -->
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 border border-blue-200">
+                        Подтверждена
+                    </span>
+                    {% else %}
+                    <!-- Статус НОВАЯ (ID 1) -->
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 border border-gray-200">
+                        Новая
+                    </span>
+                    {% endif %}
+                </td>
+
+                <!-- Клиент (Имя + Телефон) -->
+                <td class="p-4">
+                    <div class="text-sm font-bold text-gray-900">{{ app.client_name }}</div>
+                    <div class="text-sm text-blue-600 font-medium">
+                        {{ app.phone_number or 'Нет телефона' }}
+                    </div>
+                </td>
+
+                <!-- Автомобиль (Марка + Номер) -->
+                <td class="p-4">
+                    <div class="text-sm font-semibold text-gray-700">{{ app.brand or '—' }}</div>
+                    <div class="text-xs font-mono bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded inline-block mt-1">
+                        {{ app.license_plate or 'Б/Н' }}
+                    </div>
+                </td>
+
+                <!-- Детали задачи -->
+                <td class="p-4">
+                    <div class="text-sm text-gray-700 max-w-xs md:max-w-md line-clamp-2" title="{{ app.description }}">
+                        {{ app.description }}
+                    </div>
+                    {% if app.note %}
+                    <div class="mt-1 text-xs text-orange-600 italic bg-orange-50 px-2 py-0.5 rounded inline-block">
+                        Прим: {{ app.note }}
+                    </div>
+                    {% endif %}
+                </td>
+
+                <!-- Действия -->
+                <td class="p-4 text-right whitespace-nowrap">
+                    <div class="inline-flex items-center space-x-2">
+                        <!-- Кнопка Изменить -->
+                        <button hx-get="/modals/request/edit/{{ app.id }}" 
+                                hx-target="#modal-container"
+                                class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                        </button>
+
+                        <!-- Кнопка Подтвердить -->
+                        {% if app.status != 3 %}
+                        <button hx-post="/requests/confirm/{{ app.id }}" 
+                                class="bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-blue-600 hover:text-white transition">
+                            Подтвердить
+                        </button>
+                        {% endif %}
+
+                        <!-- Кнопка Принять -->
+                        <button hx-post="/assign_number/{{ app.id }}" 
+                                hx-confirm="Присвоить номер наряда и принять в работу?"
+                                class="bg-green-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-green-700 shadow-sm transition">
+                            Принять
+                        </button>
+
+                        <!-- Кнопка Удалить -->
+                        <button hx-delete="/delete/{{ app.id }}" 
+                                hx-confirm="Удалить заявку?"
+                                hx-target="closest tr"
+                                hx-swap="delete"
+                                class="p-2 text-gray-300 hover:text-red-600 transition">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="6" class="p-20 text-center">
+                    <div class="flex flex-col items-center">
+                        <p class="text-gray-400 font-medium">Новых заявок нет</p>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>

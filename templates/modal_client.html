@@ -1,0 +1,54 @@
+<div id="modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div class="bg-white p-6 rounded-lg w-full max-w-md shadow-xl">
+        <h2 class="text-xl font-bold mb-4">
+            {% if client %}Редактировать клиента{% else %}Новый клиент{% endif %}
+        </h2>
+        
+        <form hx-post="/clients/save{% if client %}/{{ client.id }}{% endif %}" class="space-y-4">
+            <div>
+                <label class="block text-xs font-semibold text-gray-500 uppercase">ФИО Клиента *</label>
+                <input type="text" name="client_name" value="{{ client.client_name if client else '' }}" required 
+                       class="w-full border rounded p-2 focus:ring-2 focus:ring-blue-400 outline-none">
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-500 uppercase">Телефон</label>
+                    <input type="text" name="phone_number" value="{{ client.phone_number if client else '' }}" 
+                           class="w-full border rounded p-2 outline-none">
+                </div>
+                <!-- <div>
+                    <label class="block text-xs font-semibold text-gray-500 uppercase">Telegram ID</label>
+                    <input type="text" name="telegram_id" value="{{ client.telegram_id if client else '' }}" 
+                           class="w-full border rounded p-2 outline-none">
+                </div> -->
+            </div>
+
+            <div class="border-t pt-4">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-500 uppercase">Марка авто</label>
+                        <input type="text" name="brand" value="{{ client.brand if client else '' }}" 
+                               class="w-full border rounded p-2 outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-500 uppercase">Гос. номер</label>
+                        <input type="text" name="license_plate" value="{{ client.license_plate if client else '' }}" 
+                               class="w-full border rounded p-2 outline-none">
+                    </div>
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-xs font-semibold text-gray-500 uppercase">VIN номер</label>
+                <input type="text" name="vin" value="{{ client.vin if client else '' }}" 
+                       class="w-full border rounded p-2 outline-none font-mono">
+            </div>
+
+            <div class="flex justify-end space-x-3 pt-4">
+                <button type="button" onclick="closeModal()" class="px-4 py-2 text-gray-500 hover:bg-gray-100 rounded">Отмена</button>
+                <button type="submit" class="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 shadow-md">Сохранить</button>
+            </div>
+        </form>
+    </div>
+</div>

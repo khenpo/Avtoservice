@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Входящие заявки</title>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 p-4 md:p-8" >
+
+    <div class="max-w-7xl mx-auto bg-white p-6 rounded-xl shadow-lg">
+        <!-- Шапка -->
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+            <div>
+                <h1 class="text-3xl font-extrabold text-gray-900">Входящие обращения</h1>
+                <p class="text-gray-500 mt-1">Управление новыми заявками до постановки в бокс</p>
+            </div>
+            <div class="flex gap-3">
+                <a href="/" class="bg-gray-100 text-gray-700 px-5 py-2.5 rounded-lg font-medium hover:bg-gray-200 transition flex items-center">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+                    В панель
+                </a>
+            </div>
+        </div>
+
+        <!-- Контейнер для таблицы заявок -->
+        <!-- hx-trigger="load, refreshNewRequests from:body" означает: 
+             загрузить при открытии И обновлять каждый раз, когда сервер пришлет сигнал refreshNewRequests -->
+        <div id="requests-list" 
+             hx-get="/requests/list" 
+             hx-trigger="load, refreshNewRequests from:body"
+             class="min-h-[200px]">
+            <div class="flex justify-center items-center p-12">
+                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                <span class="ml-3 text-gray-500">Загрузка очереди...</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Общий контейнер для модальных окон -->
+     <div id="modal-container"></div>
+
+    <script>
+        // Функция закрытия модалки
+        function closeModal() {
+            const container = document.getElementById('modal-container');
+            container.innerHTML = '';
+        }
+
+        // Закрытие по клавише Esc
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeModal();
+        });
+    </script>
+
+    
+</body>
+</html>

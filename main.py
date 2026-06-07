@@ -1,0 +1,645 @@
+"""
+main.py
+Основной файл приложения FastAPI для управления заявками в автосервисе.   
+"""
+
+# Добавьте RedirectResponse в импорты сверху
+from fastapi import FastAPI, HTTPException, Request, Form, Depends, Response
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
+from sqlalchemy.orm import Session
+from pydantic import ValidationError
+
+import time
+import datetime
+from typing import List
+
+
+from database import SessionLocal, engine, Application, Base, generate_next_order_number
+from llm import get_ai_work_summary
+from schemas import ExternalOrder, OrderShortResponse, VehicleResponse
+from logger_setup import setup_logging, logger
+
+
+# Инициализируем логи при старте
+setup_logging("backend")
+logger.info("Приложение запущено")
+
+# Создаем таблицы
+Base.metadata.create_all(bind=engine)
+
+app = FastAPI()
+templates = Jinja2Templates(directory="templates")
+
+STATUS_MAP = {
+    1: "Новая", 2: "Экстренная", 3: "Подтверждена",
+    4: "Поступила", 5: "В работе", 6: "Выполнена", 7: "Завершена"
+}
+
+
+def get_db():
+    """
+    Вспомогательная функция для получения сессии БД в каждом запросе.
+     - Создает сессию при начале запроса и гарантирует ее закрытие после.
+    """
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """ Обработчик ошибок валидации данных от клиентов."""
+    # Получаем детали ошибки
+    details = exc.errors()
+    # Логируем как ERROR, чтобы это прилетело в Telegram
+    logger.error(f"Validation Error (422) | Path: {request.url.path} | Details: {details}")
+
+    return JSONResponse(
+        status_code=422,
+        content={"message": "Ошибка валидации данных", "details": details},
+    )
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(_request: Request, exc: Exception):
+    """    Логируем ошибку, Loguru сам отправит её в TG """
+    logger.exception(f"Критическая ошибка бэкенда:  {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={"message": "Внутренняя ошибка сервера. Администратор уведомлен."},
+    )
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    """
+    Заглушка для favicon, чтобы не получать 404 в логах при каждом запросе.  
+    """
+    return Response(status_code=204)
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """ Мидлвар для логирования всех входящих HTTP-запросов.
+     - Логирует метод, путь, статус ответа и время обработки.
+     - Помогает отслеживать активность и производительность приложения.
+    """
+    start_time = time.time()
+    response = await call_next(request)
+    process_time = (time.time() - start_time) * 1000
+
+    # Логируем: Метод, Путь, Статус и время выполнения
+    logger.info(
+        f"{request.method} {request.url.path} | "
+        f"Status: {response.status_code} | "
+        f"Time: {process_time:.2f}ms"
+    )
+    return response
+
+
+# --- ГЛАВНАЯ СТРАНИЦА ---
+
+@app.get("/", response_class=HTMLResponse)
+async def index(request: Request, db: Session = Depends(get_db)):
+    """
+    Отображение главной страницы со списком заявок.
+     - Выбираем из БД все заявки, которые уже имеют номер (принятые в работу) 
+     и не имеют статус "Завершена".
+    """
+    logger.debug("Запрос главной страницы")
+
+    current_apps = db.query(Application).filter(
+        Application.order_number.is_not(None),   # принятые в работу
+        Application.status != 7             # не имющие статус "Завершена"
+    ).all()
+
+    return templates.TemplateResponse(
+        request,
+        "index.html",
+        {"apps": current_apps, "statuses": STATUS_MAP}
+    )
+
+
+# --- СПИСОК (HTMX PARTIAL) ---
+
+@app.get("/list", response_class=HTMLResponse)
+async def get_list(request: Request, db: Session = Depends(get_db)):
+    """
+    Возвращает только таблицу со списком заявок для HTMX обновления.
+    """
+    apps = db.query(Application).filter(
+        Application.order_number.is_not(None),   # принятые в работу
+        Application.status != 7             # не имющие статус "Завершена"
+    ).all()
+    return templates.TemplateResponse(
+        request,
+        "partials/app_table.html",
+        {"apps": apps, "statuses": STATUS_MAP}
+    )
+
+
+# --- МОДАЛКА: ДОБАВИТЬ ---
+
+@app.get("/modals/add", response_class=HTMLResponse)
+async def get_add_modal(request: Request, db: Session = Depends(get_db)):
+    """
+    Возвращает модальное окно для принятия в работу новой заявки.
+    """
+    pending = db.query(Application).filter(
+        Application.order_number.is_(None),  # еще не принятые в работу
+        Application.description.is_not(None)
+    ).all()
+    return templates.TemplateResponse(
+        request,
+        "modal_add.html",
+        {"pending": pending}
+    )
+
+
+# --- МОДАЛКА: ИЗМЕНИТЬ ---
+
+@app.get("/modals/edit/{app_id}")
+async def get_edit_modal(app_id: int, request: Request, db: Session = Depends(get_db)):
+    """
+    Возвращает модальное окно для редактирования заявки.    
+    """
+    app_obj = db.query(Application).filter(Application.id == app_id).first()
+    edit_statuses = {4: "Поступила", 5: "В работе",
+                     6: "Выполнена"}  # Доступные варианты статусов
+    return templates.TemplateResponse(
+        request,
+        "modal_edit.html",
+        {"app": app_obj, "edit_statuses": edit_statuses}
+    )
+
+
+# --- МОДАЛКА: ЗАВЕРШИТЬ ---
+
+@app.get("/modals/complete/{app_id}")
+async def get_complete_modal(app_id: int, request: Request):
+    """
+    Возвращает модальное окно для завершения заявки.    
+     - Здесь оператор вводит пробег и нажимает "Завершить"
+    """
+    return templates.TemplateResponse(
+        request,
+        "modal_complete.html",
+        {"app_id": app_id}
+    )
+
+
+# --- ЛОГИКА ОБРАБОТКИ (POST/DELETE) ---
+
+@app.post("/update/{app_id}")
+async def update_app(
+    app_id: int,
+    status: int = Form(...),
+    description: str = Form(...),
+    note: str = Form(None),
+    db: Session = Depends(get_db)
+):
+    """
+    Обрабатывает изменения заявки из модального окна редактирования.
+     - Обновляет статус, описание и примечание в БД.    
+    """
+
+    app_obj = db.query(Application).filter(Application.id == app_id).first()
+    if app_obj:
+        app_obj.status = status
+        app_obj.description = description
+        app_obj.note = note
+        db.commit()
+        logger.info(f"Обновление заявки ID {app_id}: Статус {status}")
+    return Response(headers={"HX-Trigger": "refreshList"})
+
+
+@app.post("/complete/{app_id}")
+async def complete_app(app_id: int, mileage: int = Form(...), db: Session = Depends(get_db)):
+    """
+    Обрабатывает изменения заявки из модального окна редактирования.
+     - Обновляет статус, описание и примечание в БД.    
+    """
+    app_obj = db.query(Application).filter(Application.id == app_id).first()
+
+    if app_obj:
+        app_obj.mileage = mileage
+        app_obj.status = 7
+        db.commit()
+
+    logger.success(f"Заявка ID {app_id} ЗАВЕРШЕНА. Пробег: {mileage} км.")
+
+    return Response(headers={"HX-Trigger": "refreshList"})
+
+
+@app.delete("/delete/{app_id}")
+async def delete_app(app_id: int, db: Session = Depends(get_db)):
+    """
+    Удаляет заявку из БД.
+     - На главной странице есть кнопка "Удалить", которая вызывает этот эндпоинт через HTMX.
+     - После удаления отправляем HTMX-триггер для обновления списка. 
+    """
+    logger.info(
+        f"Удаление записи ID {app_id}!")  # Critical - так как данные пропадают
+
+    app_obj = db.query(Application).filter(Application.id == app_id).first()
+    if app_obj:
+        db.delete(app_obj)
+        db.commit()
+    return Response(headers={"HX-Trigger": "refreshList"})
+
+
+# --- СТРАНИЦА СОЗДАНИЯ НОВОЙ ЗАЯВКИ ---
+
+@app.get("/new-request", response_class=HTMLResponse)
+async def new_request_page(request: Request):
+    """Отображение страницы для создания новой заявки.
+     - Здесь оператор может ввести данные о клиенте и описать проблему.
+     - При отправке формы данные будут валидированы через Pydantic и сохранены в БД."""
+    return templates.TemplateResponse(
+        request,
+        "create_request.html",
+        {"statuses": STATUS_MAP}
+    )
+
+
+# Присвоение номера наряда (из очереди) ---
+
+@app.post("/assign_number/{app_id}")
+async def assign_number(app_id: int, db: Session = Depends(get_db)):
+    """Присваивает номер наряда заявке из очереди "Добавить"."""
+
+    app_obj = db.query(Application).filter(Application.id == app_id).first()
+    if app_obj:
+        # Генерируем номер автоматически
+        old_status = app_obj.status
+        app_obj.order_number = generate_next_order_number(db)
+        app_obj.status = 4  # Устанавливаем статус "Принята в работу"
+        db.commit()
+        logger.info(
+            f"Заявка ID {app_id} ПРИНЯТА. Номер: {app_obj.order_number}, Статус: {old_status} -> 4")
+    return Response(headers={"HX-Trigger": "refreshList"})
+
+
+# Создание новоого заказа из формы
+
+@app.post("/create-request")
+async def create_order(
+    client_name: str = Form(...),
+    phone_number: str = Form(None),
+    brand: str = Form(None),
+    vin: str = Form(None),
+    license_plate: str = Form(None),
+    # Получаем как строку, Pydantic сконвертирует в int
+    mileage: str = Form(None),
+    telegram_id: str = Form(None),
+    description: str = Form(...),
+    note: str = Form(None),
+    status: int = Form(1),
+    assign_now: str = Form(None),
+    db: Session = Depends(get_db)
+):
+    """
+    Ввод записи о новой заявке при редактировании в форме /create-request.
+     - Обязательные поля: client_name, description. Остальные — по желанию.
+
+     """
+    # 1. Собираем данные в словарь для валидации
+    form_data = {
+        "client_name": client_name,
+        "phone_number": phone_number,
+        "brand": brand,
+        "vin": vin,
+        "license_plate": license_plate,
+        "mileage": int(mileage) if mileage and mileage.isdigit() else None,
+        "telegram_id": telegram_id,
+        "description": description,
+        "note": note,
+        "status": status
+    }
+
+    # 2. Валидируем через Pydantic
+    try:
+        validated_order = ExternalOrder(**form_data)
+    except ValidationError as e:
+        # Если данные неверны, возвращаем простую ошибку
+        errors = e.errors()
+        error_messages = "; ".join(
+            [f"{err['loc'][0]}: {err['msg']}" for err in errors])
+
+        # Логируем подробности ошибки
+        logger.warning(f"Ошибка валидации формы: {e.json()}")
+
+        return HTMLResponse(content=f"Ошибка заполнения формы: {error_messages}", status_code=400)
+
+    # 3. Если валидация прошла, создаем объект БД из валидированных данных
+    # .model_dump() превращает Pydantic-модель обратно в словарь
+    new_app = Application(**validated_order.model_dump())
+    new_app.date = datetime.datetime.now()
+
+    # Логика автоматического присвоения номера
+    if assign_now == "on":
+        new_app.order_number = generate_next_order_number(db)
+        if new_app.status < 4:
+            new_app.status = 4  # Статус "Поступила"
+
+    db.add(new_app)
+    db.commit()
+
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.get("/archive", response_class=HTMLResponse)
+async def archive_page(request: Request, db: Session = Depends(get_db)):
+    """
+    Оторажение списка истории  заказов
+    """
+    completed_apps = db.query(Application).filter(
+        Application.status == 7).all()
+    return templates.TemplateResponse(request, "archive.html",
+                                      {"apps": completed_apps, "statuses": STATUS_MAP})
+
+
+# --- API ДЛЯ ВНЕШНИХ СИСТЕМ ---
+
+@app.post("/api/orders", status_code=201)
+async def create_external_order(order_data: ExternalOrder, db: Session = Depends(get_db)):
+    """
+    Эндпоинт для приема заявок извне.
+    Принимает JSON, валидирует его через Pydantic.
+    """
+    logger.info(
+        f"API запрос от {order_data.client_name} (TG: {order_data.telegram_id})")
+
+    new_app = Application(
+        client_name=order_data.client_name,
+        telegram_id=order_data.telegram_id,
+        tg_name=order_data.tg_name,
+        phone_number=order_data.phone_number,
+        brand=order_data.brand,
+        vin=order_data.vin,
+        license_plate=order_data.license_plate,
+        mileage=order_data.mileage,
+        description=order_data.description,
+        note=order_data.note,
+        status=order_data.status,
+        # order_number остается NULL, чтобы заявка попала в очередь "Добавить"
+        date=datetime.datetime.now()
+    )
+
+    db.add(new_app)
+    db.commit()
+    db.refresh(new_app)
+
+    return {"status": "success", "order_id": new_app.id}
+
+
+@app.get("/api/orders/active/{uid}", response_model=List[OrderShortResponse])
+async def get_active_orders_by_uid(uid: str, db: Session = Depends(get_db)):
+    """
+    Получить список всех активных (незавершенных) заказов клиента по его UID (telegram_id).
+    """
+    # Ищем записи, где telegram_id совпадает, а статус не "Завершена" (7)
+
+    logger.info(f"Запрос активных заказов для UID: {uid}")
+
+    orders = db.query(Application).filter(
+        Application.telegram_id == uid,
+        # Убедимся, что это запись о заявке, а не просто о клиенте
+        Application.description.is_not(None),
+        Application.status != 7
+    ).order_by(Application.date.desc()).all()
+
+    # Формируем ответ, добавляя текстовое название статуса из нашего STATUS_MAP
+    result = []
+    for o in orders:
+        # 2. Превращаем объект SQLAlchemy в словарь
+        data = {
+            "id": o.id,
+            "order_number": o.order_number,
+            "date": o.date,
+            "brand": o.brand,
+            "license_plate": o.license_plate,
+            "status": o.status,
+            # Добавляем имя статуса
+            "status_name": STATUS_MAP.get(o.status, "Неизвестно"),
+            "description": o.description,
+            "note": o.note
+        }
+        # 3. Валидируем словарь через Pydantic
+        result.append(OrderShortResponse(**data))
+
+    return result
+
+@app.get("/api/vehicles/{uid}", response_model=List[VehicleResponse])
+async def get_user_vehicles(uid: str, db: Session = Depends(get_db)):
+    """
+    Получить список автомобилей пользователя по его UID (telegram_id).
+    """
+    logger.info(f"Запрос списка машины для UID: {uid}")
+    # Выбираем только поля машины и используем distinct(),
+    # чтобы не возвращать одну и ту же машину много раз из разных заявок
+    vehicles = db.query(
+        Application.client_name,
+        Application.phone_number,
+        Application.brand,
+        Application.license_plate,
+        Application.vin
+    ).filter(
+        Application.telegram_id == uid,
+        Application.description.is_(None),  # Убедимся, что это запись о клиенте
+    ).distinct().all()
+    logger.info(vehicles)
+    # SQLAlchemy вернет список кортежей, Pydantic автоматически преобразует их в объекты схемы
+    return [v._asdict() for v in vehicles]
+
+@app.get("/api/work-summary", response_class=HTMLResponse)
+async def get_work_summary(db: Session = Depends(get_db)):
+    """
+    Получение сводки по текущим заявкам на выполнение работ.
+    """
+    # Выбираем только активные (незавершенные) заявки с присвоенным номером
+    active_orders = db.query(Application).filter(
+        Application.order_number.is_not(None),
+        Application.status != 7
+    ).all()
+
+    if not active_orders:
+        return "Активных заявок в работе сервиса сейчас нет."
+
+    # Преобразуем объекты SQLAlchemy в простые словари для функции LLM
+    orders_data = [
+        {"brand": o.brand, "description": o.description}
+        for o in active_orders
+    ]
+
+    # Вызываем функцию из llm.py
+    summary_text = await get_ai_work_summary(orders_data)
+
+    return summary_text
+
+@app.delete("/api/vehicles/{telegram_id}/{license_plate}")
+async def delete_vehicle(telegram_id: str, license_plate: str, db: Session = Depends(get_db)):
+    """
+    Удаляет регистрационную запись об автомобиле.
+    Удаляются только записи, где description is None (т.е. не заказы).
+    """
+    logger.info(f"Запрос на удаление автомобиля {license_plate} для UID: {telegram_id}")
+    try:
+        # Ищем запись: совпадает ID пользователя, госномер и описание пустое
+        vehicle_record = db.query(Application).filter(
+            Application.telegram_id == telegram_id,
+            Application.license_plate == license_plate,
+            Application.description.is_(None)  # Это гарантирует, что мы удаляем "машину", а не "заказ"
+        ).first()
+        logger.info(f"Найдена запись для удаления: {vehicle_record}")  # Логируем найденную запись
+        if not vehicle_record:
+            raise HTTPException(
+                status_code=404,
+                detail="Запись об автомобиле не найдена"
+            )
+
+        db.delete(vehicle_record)
+        db.commit()
+
+        return {"status": "success", "message": f"Автомобиль {license_plate} удален"}
+
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Ошибка при удалении из БД: {e}")
+
+
+@app.get("/requests", response_class=HTMLResponse)
+async def requests_page(request: Request, db: Session = Depends(get_db)):
+    """
+    Страница просмотра новых заявок, которые еще не приняты в работу 
+    (у них нет номера наряда).
+    """
+    # Выбираем заявки без номера, где описание не пустое
+    pending_apps = db.query(Application).filter(
+        Application.order_number.is_(None),
+        Application.description.is_not(None)
+    ).order_by(Application.date.desc()).all()
+
+    return templates.TemplateResponse(
+        request,
+        "requests.html",
+        {"apps": pending_apps, "statuses": STATUS_MAP}
+    )
+
+
+# --- СТРАНИЦА КЛИЕНТОВ ---
+
+@app.get("/clients", response_class=HTMLResponse)
+async def clients_page(request: Request, db: Session = Depends(get_db)):
+    """Отображение списка всех клиентов (где description is NULL)"""
+    clients = db.query(Application).filter(Application.description.is_(None)).all()
+    return templates.TemplateResponse(
+        request,
+        "clients.html", 
+        {"clients": clients}
+    )
+
+# --- МОДАЛКА: ДОБАВИТЬ/РЕДАКТИРОВАТЬ КЛИЕНТА ---
+
+@app.get("/modals/client/add", response_class=HTMLResponse)
+async def get_add_client_modal(request: Request):
+    """Возвращает модальное окно для добавления нового клиента"""    
+    return templates.TemplateResponse(request, "modal_client.html", {"client": None})
+
+@app.get("/modals/client/edit/{client_id}", response_class=HTMLResponse)
+async def get_edit_client_modal(client_id: int, request: Request, db: Session = Depends(get_db)):
+    """Возвращает модальное окно для редактирования клиента по его ID"""
+    client = db.query(Application).filter(Application.id == client_id).first()
+    return templates.TemplateResponse(request, "modal_client.html", {"client": client})
+
+# --- ЛОГИКА СОХРАНЕНИЯ КЛИЕНТА ---
+
+@app.post("/clients/save")
+@app.post("/clients/save/{client_id}")
+async def save_client(
+    client_id: int = None,
+    client_name: str = Form(...),
+    phone_number: str = Form(None),
+    telegram_id: str = Form(None),
+    brand: str = Form(None),
+    license_plate: str = Form(None),
+    vin: str = Form(None),
+    db: Session = Depends(get_db)
+):
+    """Сохранение данных клиента"""
+    if client_id:
+        client = db.query(Application).filter(Application.id == client_id).first()
+    else:
+        client = Application(description=None) # Явно указываем NULL для описания
+        db.add(client)
+
+    client.client_name = client_name
+    client.phone_number = phone_number
+    client.telegram_id = telegram_id
+    client.brand = brand
+    client.license_plate = license_plate
+    client.vin = vin
+
+    db.commit()
+    # Возвращаем заголовок для обновления страницы или перенаправления
+    return Response(headers={"HX-Redirect": "/clients"})
+
+# --- РЕДАКТИРОВАНИЕ ВХОДЯЩЕЙ ЗАЯВКИ (БЕЗ НОМЕРА) ---
+
+@app.get("/modals/request/edit/{app_id}", response_class=HTMLResponse)
+async def get_request_edit_modal(app_id: int, request: Request, db: Session = Depends(get_db)):
+    """Модальное окно редактирования новой заявки до её принятия в работу"""
+    app_obj = db.query(Application).filter(Application.id == app_id).first()
+    return templates.TemplateResponse(
+        request,
+        "modal_request_edit.html", 
+        {"app": app_obj}
+    )
+
+@app.post("/requests/update/{app_id}")
+async def update_pending_request(
+    app_id: int,
+    description: str = Form(...),
+    note: str = Form(None),
+    db: Session = Depends(get_db)
+):
+    """Сохранение изменений описания и примечания для входящей заявки"""
+    app_obj = db.query(Application).filter(Application.id == app_id).first()
+    if app_obj:
+        app_obj.description = description
+        app_obj.note = note
+        db.commit()
+    # Возвращаем сигнал HTMX для обновления списка на странице
+    return Response(headers={"HX-Trigger": "refreshNewRequests"})
+
+# --- ПОДТВЕРЖДЕНИЕ ЗАЯВКИ (СТАТУС 3) ---
+
+@app.post("/requests/confirm/{app_id}")
+async def confirm_request(app_id: int, db: Session = Depends(get_db)):
+    """Перевод заявки в статус 'Подтверждена' (3) без присвоения номера наряда"""
+    app_obj = db.query(Application).filter(Application.id == app_id).first()
+    if app_obj:
+        app_obj.status = 3
+        db.commit()
+        logger.info(f"Заявка ID {app_id} переведена в статус 'Подтверждена'")
+    return Response(headers={"HX-Trigger": "refreshNewRequests"})
+
+# Обновим также эндпоинт получения списка для страницы новых заявок (Partial)
+@app.get("/requests/list", response_class=HTMLResponse)
+async def get_requests_list(request: Request, db: Session = Depends(get_db)):
+    """Возвращает только таблицу со списком новых заявок для HTMX обновления 
+        на странице /requests
+        - Выбираем заявки без номера, где описание не пустое
+    """
+    pending_apps = db.query(Application).filter(
+        Application.order_number.is_(None),
+        Application.description.is_not(None)
+    ).order_by(Application.date.desc()).all()
+    return templates.TemplateResponse(
+        request,
+        "partials/requests_table.html", 
+        {"apps": pending_apps, "statuses": STATUS_MAP}
+    )

@@ -1,0 +1,28 @@
+<!-- templates/modal_request_edit.html -->
+<div id="modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div class="bg-white p-6 rounded-lg w-full max-w-lg shadow-xl text-left">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-xl font-bold text-gray-800">Редактировать входящую заявку</h2>
+            <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600">&times;</button>
+        </div>
+        
+        <form hx-post="/requests/update/{{ app.id }}" hx-target="#modal-container">
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700">Описание работ</label>
+                <textarea name="description" rows="4" required 
+                          class="mt-1 block w-full border border-gray-300 rounded-md p-2 shadow-sm focus:ring-blue-500 focus:border-blue-500">{{ app.description }}</textarea>
+            </div>
+
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700">Примечание</label>
+                <textarea name="note" rows="2" 
+                          class="mt-1 block w-full border border-gray-300 rounded-md p-2 shadow-sm focus:ring-blue-500 focus:border-blue-500">{% if app.note %}{{ app.note }}{% endif %}</textarea>
+            </div>
+
+            <div class="flex justify-end space-x-3 pt-4 border-t">
+                <button type="button" onclick="closeModal()" class="px-4 py-2 text-gray-500 hover:bg-gray-100 rounded">Отмена</button>
+                <button type="submit" class="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 shadow-md">Сохранить</button>
+            </div>
+        </form>
+    </div>
+</div>

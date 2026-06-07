@@ -1,0 +1,25 @@
+<table class="w-full text-left border-collapse">
+    <thead>
+        <tr class="border-b">
+            <th class="p-2">№ наряд</th><th class="p-2">Клиент</th><th class="p-2">Телефон</th><th class="p-2">Марка</th><th class="p-2">Рег.номер</th>
+            <th class="p-2">Статус</th><th class="p-2">Действия</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for app in apps %}
+        <tr class="border-b hover:bg-gray-50">
+            <td class="p-2">{{ app.order_number }}</td>
+            <td class="p-2">{{ app.client_name }}</td>
+            <td class="p-2">{{ app.phone_number }}</td>
+            <td class="p-2">{{ app.brand }}</td>
+            <td class="p-2">{{ app.license_plate }}</td>    
+            <td class="p-2">{{ statuses[app.status] }}</td>
+            <td class="p-2 space-x-2">
+                <button hx-get="/modals/edit/{{app.id}}" hx-target="#modal-container" class="text-blue-500">Изменить</button>
+                <button hx-get="/modals/complete/{{app.id}}" hx-target="#modal-container" class="text-orange-500">Завершить</button>
+
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>

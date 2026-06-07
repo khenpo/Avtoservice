@@ -1,0 +1,34 @@
+<div id="modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div class="bg-white p-6 rounded-lg w-full max-w-md shadow-xl">
+        <h2 class="text-xl font-bold mb-4">Изменить наряд №{{ app.order_number }}</h2>
+        
+        <form hx-post="/update/{{ app.id }}" hx-target="#modal-container" hx-swap="innerHTML">
+            <!-- Состояние -->
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700">Состояние</label>
+                <select name="status" class="mt-1 block w-full border border-gray-300 rounded-md p-2 shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                    {% for val, name in edit_statuses.items() %}
+                    <option value="{{ val }}" {% if app.status == val %}selected{% endif %}>{{ name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Описание -->
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700">Описание</label>
+                <textarea name="description" rows="3" class="mt-1 block w-full border border-gray-300 rounded-md p-2 shadow-sm focus:ring-blue-500 focus:border-blue-500" required>{{ app.description }}</textarea>
+            </div>
+
+            <!-- Примечание -->
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700">Примечание</label>
+                <textarea name="note" rows="2" class="mt-1 block w-full border border-gray-300 rounded-md p-2 shadow-sm focus:ring-blue-500 focus:border-blue-500">{% if app.note %}{{ app.note }}{% endif %}</textarea>
+            </div>
+
+            <div class="flex justify-end space-x-3">
+                <button type="button" onclick="closeModal()" class="bg-gray-300 px-4 py-2 rounded-md hover:bg-gray-400">Отмена</button>
+                <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">Сохранить</button>
+            </div>
+        </form>
+    </div>
+</div>

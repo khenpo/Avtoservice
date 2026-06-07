@@ -1,0 +1,453 @@
+"""
+Этот файл содержит все обработчики сообщений и коллбеков для Telegram бота.
+"""
+import httpx
+import os
+from aiogram import Router, F, types
+from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup
+from aiogram.types import ErrorEvent, InlineKeyboardButton
+
+from loguru import logger
+from dotenv import load_dotenv
+
+from .bot_instance import bot #, dp
+from .states import Registration, CreateOrder, EmergencyState
+from .utils import get_active_orders, delete_vehicle, API_BASE_URL, get_user_vehicles_data, md_to_tg_html
+
+router = Router()
+
+load_dotenv()
+
+# API_BASE_URL = os.environ.get("API_BASE_URL") # URL  FastAPI внутри сети Docker
+MASTER_ID =  os.environ.get("MASTER_ID")
+
+@router.error()
+async def bot_error_handler(event: ErrorEvent):
+    logger.exception(f"Ошибка в логике бота: {event.exception}")
+
+    # Пытаемся вежливо ответить пользователю
+    if event.update.message:
+        await event.update.message.answer("⚠️ Произошла непредвиденная ошибка в работе бота. Мы уже чиним её!")
+
+def main_menu():
+    """ 
+    Главное меню Бота
+    """
+    kb = [
+        [KeyboardButton(text="📝 Заявка"), KeyboardButton(text="📊 Статус")],
+        [KeyboardButton(text="📍 Как проехать"), KeyboardButton(text="🗞 Вести с полей")],
+        [KeyboardButton(text="🆘 Emergency"), KeyboardButton(text="🚗 Мой гараж")],
+        [KeyboardButton(text="👤 Регистрация")]
+
+    ]
+    return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
+
+# --- КНОПКА ОТМЕНА (Универсальная) ---
+@router.message(F.text == "Отмена")
+async def cmd_cancel(message: types.Message, state: FSMContext):
+    """
+    Универсальный обработчик для отмены текущего действия. 
+    Сбрасывает состояние FSM и возвращает главное меню.
+    """
+    await state.clear()
+    await message.answer("Действие отменено.", reply_markup=main_menu())
+
+@router.message(Command("start"))
+async def cmd_start(message: types.Message):
+    """Приветственное сообщение и главное меню"""
+    await message.answer("Добро пожаловать в автосервис!", reply_markup=main_menu())
+
+# --- ЛОГИКА КНОПКИ "ЗАЯВКА" ---
+
+@router.message(F.text == "📝 Заявка")
+async def create_app_start(message: types.Message, state: FSMContext):
+    """Начинаем процесс создания заявки. Сначала проверяем, есть ли у пользователя 
+    зарегистрированные машины.
+     - Если машин несколько — предлагаем выбрать.
+     - Если одна — используем её данные и сразу просим описание проблемы."""
+    uid = str(message.from_user.id)
+    vehicles = await get_user_vehicles_data(uid)
+
+    if not vehicles:
+        return await message.answer("Сначала зарегистрируйте автомобиль в разделе '👤 Регистрация'.")
+
+    v = vehicles[0]
+    await state.update_data(client_name=v['client_name'], phone_number=v['phone_number'])
+
+    # Если машин несколько — даем выбор, если одна — выбираем сразу
+    if len(vehicles) > 1:
+        kb = []
+        for v in vehicles:
+            btn_text = f"{v['brand']} ({v['license_plate']})"
+            # Сохраняем данные машины в callback_data
+            cb_data = f"car_{v['brand']}_{v['license_plate']}"
+            kb.append([types.InlineKeyboardButton(text=btn_text, callback_data=cb_data)])
+
+        markup = types.InlineKeyboardMarkup(inline_keyboard=kb)
+        await message.answer("Выберите автомобиль для заявки:", reply_markup=markup)
+        await state.set_state(CreateOrder.selecting_car)
+    else:
+        # Машина одна, запоминаем её и сразу просим описание
+        await state.update_data(brand=v['brand'], license_plate=v['license_plate'], vin=v['vin'])
+        await message.answer(f"Вы создаете заявку для <b>{v['brand']}</b>. "\
+            "Опишите проблему или что нужно сделать:",
+                    reply_markup=ReplyKeyboardMarkup(
+                    keyboard=[[KeyboardButton(text="Отмена")]],
+                    resize_keyboard=True
+                            )
+                    )
+        await state.set_state(CreateOrder.waiting_for_description)
+
+# Обработка выбора машины из списка (Inline кнопки)
+@router.callback_query(CreateOrder.selecting_car, F.data.startswith("car_"))
+async def car_selected(callback: types.CallbackQuery, state: FSMContext):
+    """Пользователь выбрал машину из списка. Сохраняем её данные и просим описание проблемы."""
+    # Извлекаем данные из callback_data (формат: car_Brand_Plate)
+    parts = callback.data.split("_")
+    brand = parts[1]
+    plate = parts[2]
+
+    await state.update_data(brand=brand, license_plate=plate)
+    await callback.message.edit_text(f"Автомобиль: <b>{brand}</b> ({plate})\n\n"\
+                                     "Опишите проблему или что нужно сделать:",                                     
+                                        reply_markup=ReplyKeyboardMarkup(
+                                        keyboard=[[KeyboardButton(text="Отмена")]],
+                                        resize_keyboard=True
+                                )
+                         )
+    await state.set_state(CreateOrder.waiting_for_description)
+
+
+@router.message(CreateOrder.waiting_for_description)
+async def process_description(message: types.Message, state: FSMContext):
+    """ Финальный шаг: получение описания и отправка на сервер"""
+    user_data = await state.get_data()
+    description_text = message.text
+
+    # Собираем JSON для вашего API (схема ExternalOrder в schemas.py)
+    order_data = {
+        "client_name": user_data.get('client_name'),
+        "phone_number": user_data.get('phone_number'),
+        "tg_name":  message.from_user.full_name,
+        "telegram_id": str(message.from_user.id),
+        "brand": user_data['brand'],
+        "license_plate": user_data['license_plate'],
+        "vin": user_data.get('vin'),
+        "description": description_text,
+        "status": 1 # Новая
+    }
+
+    async with httpx.AsyncClient() as client:
+        try:
+            r = await client.post(f"{API_BASE_URL}/api/orders", json=order_data)
+            if r.status_code == 201:
+                await message.answer("✅ Ваша заявка принята! Свяжемся с вами после обработки")
+            else:
+                await message.answer("❌ Ошибка при сохранении заявки. Попробуйте позже")
+        except Exception as e:
+            await message.answer("🆘 Ошибка связи с сервером.")
+
+    await state.clear()
+
+# --- ЛОГИКА КНОПКИ "СТАТУС" ---
+
+@router.message(F.text == "📊 Статус")
+async def cmd_status(message: types.Message):
+    """Показывает пользователю его текущие заявки в работе с красивым форматированием."""
+    uid = str(message.from_user.id)
+    orders = await get_active_orders(uid)
+
+    if orders is None:
+        return await message.answer("Ошибка связи с сервером.")
+
+    if not orders:
+        return await message.answer("У вас нет активных заявок в работе.")
+
+    response = "🔎 <b>Ваши текущие заявки:</b>\n\n"
+    for o in orders:
+        # Формируем красивый текст из данных API
+        num = o.get('order_number') or "В очереди"
+        status = o.get('status_name', 'Неизвестно')
+        response += (
+            f"<b>№ {num}</b>\n\n"
+            f"🚗 {o['brand']} ({o['license_plate']})\n\n"
+            f"Статус: <code>{status}</code>\n\n"
+            f"Проблема: {o['description']}\n\n\n\n"
+        )
+    await message.answer(response, parse_mode="HTML")
+
+
+# --- РЕГИСТРАЦИЯ ---
+@router.message(F.text == "👤 Регистрация")
+async def start_reg(message: types.Message, state: any):
+    """
+    Начинаем регистрацию. Сначала проверяем, есть ли у пользователя зарегистрированные машины.
+     - Если есть — предлагаем добавить новую машину, используя старые данные. 
+     - Если нет — начинаем полную регистрацию с нуля.
+     """
+    uid = str(message.from_user.id)
+    # Проверка через API (или напрямую через БД, т.к. файл один)
+
+    async with httpx.AsyncClient() as client:
+        try:
+            resp = await client.get(f"{API_BASE_URL}/api/vehicles/{uid}")
+            existing_cars = resp.json() if resp.status_code == 200 else []
+
+            if len(existing_cars) > 0:
+                # Пользователь есть. Предлагаем добавить авто, используя старые данные
+                kb = [
+                    [KeyboardButton(text="Да, новая машина")],
+                    [KeyboardButton(text="Отмена")]
+                ]
+                markup = ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
+
+                # Сохраняем имя и телефон из первой попавшейся записи в FSM
+                profile = existing_cars[0]
+                logger.info(profile)
+                await state.update_data(
+                    client_name=profile.get('client_name'),
+                    phone_number=profile.get('phone_number')
+                )
+
+                await message.answer(
+                    f"Рады видеть вас снова, {profile.get('client_name')}!\n"
+                    f"Добавить ещё один автомобиль к вашему профилю?",
+                    reply_markup=markup
+                )
+                return # Ждем нажатия "Да, новая машина"
+
+        except Exception as e:
+            logger.error(f"Ошибка проверки регистрации: {e}")
+
+    # Если пользователя нет в базе — начинаем полную регистрацию
+    await message.answer("Введите ваше ФИО (для регистрации):",
+                         reply_markup=ReplyKeyboardMarkup(
+                            keyboard=[[KeyboardButton(text="Отмена")]],
+                            resize_keyboard=True
+                            )
+                         )
+    await state.set_state(Registration.waiting_for_name)
+
+# Обработчик для подтверждения добавления новой машины (для старых пользователей)
+@router.message(F.text == "Да, новая машина")
+async def reg_new_car_fast(message: types.Message, state: FSMContext):
+    """
+    Пользователь подтвердил, что хочет добавить новую машину. 
+    Используем сохраненные данные и просим ввести данные новой машины.
+    """
+    data = await state.get_data()
+    logger.info(data)
+    if not data.get('client_name'):
+        # Если вдруг данные в FSM не попали (таймаут или перезагрузка без Redis)
+        return await start_reg(message, state)
+
+    await message.answer(f"Используем ваши данные:\n👤 {data['client_name']}\n"\
+                                                   "📞 {data['phone_number']}")
+    await message.answer("Введите марку и модель нового авто:",
+                         reply_markup=ReplyKeyboardMarkup(
+                            keyboard=[[KeyboardButton(text="Отмена")]],
+                            resize_keyboard=True
+                            )
+                         )
+    await state.set_state(Registration.waiting_for_brand)
+
+@router.message(Registration.waiting_for_name)
+async def reg_name_input(message: types.Message, state: FSMContext):
+    if message.text == "Отмена":
+        return
+    name = message.text.strip()
+
+    if len(name) < 3:
+        await message.answer("⚠️ ФИО слишком короткое. Пожалуйста, введите имя полностью:")
+        return # Мы НЕ вызываем set_state, пользователь остается в Registration.waiting_for_name
+
+    if len(name) > 100:
+        await message.answer("⚠️ Слишком длинный ввод. Пожалуйста, используйте не более 100 символов:")
+        return
+
+    await state.update_data(client_name=message.text)
+
+    await message.answer(
+        "Ваш номер телефона:",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="Отмена")]],
+            resize_keyboard=True
+            )
+        )
+    await state.set_state(Registration.waiting_for_phone_number)
+
+@router.message(Registration.waiting_for_phone_number)
+async def reg_phone_number(message: types.Message, state: FSMContext):
+    await state.update_data(phone_number=message.text)
+
+    await message.answer("Введите марку и модель авто:",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="Отмена")]],
+            resize_keyboard=True
+            )
+        )
+    await state.set_state(Registration.waiting_for_brand)
+
+@router.message(Registration.waiting_for_brand)
+async def reg_brand(message: types.Message, state: FSMContext):
+    await state.update_data(brand=message.text, telegram_id=str(message.from_user.id))
+
+    await message.answer("VIN номер:",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="Отмена")]],
+            resize_keyboard=True
+            )
+        )
+    await state.set_state(Registration.waiting_for_vin)
+
+@router.message(Registration.waiting_for_vin)
+async def reg_vin(message: types.Message, state: FSMContext):
+    await state.update_data(vin=message.text)
+
+    await message.answer("Гос. номер:",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="Отмена")]],
+            resize_keyboard=True
+            )
+        )
+    await state.set_state(Registration.waiting_for_plate)
+
+@router.message(Registration.waiting_for_plate)
+async def reg_final(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    data['license_plate'] = message.text
+    data['tg_name'] =  message.from_user.full_name
+    data['description'] = None # Это поле нужно для схемы ExternalOrder
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.post(f"{API_BASE_URL}/api/orders", json=data)
+            if r.status_code == 201:
+                await message.answer("✅ Регистрация успешна!", reply_markup=main_menu())
+                logger.info(f"Новая регистрация: {data['license_plate']} (ID: {message.from_user.id})")
+            else:
+                await message.answer("❌ Ошибка при сохранении.", reply_markup=main_menu())
+                logger.error(f"Ошибка бэкенда {r.status_code} при регистрации: {r.text}")
+
+    except Exception as e:
+        # Это исключение попадет в ваш Telegram через logger_setup
+        logger.exception(f"Серьезная ошибка в reg_final для пользователя {message.from_user.id}")
+        await message.answer("🆘 Произошла техническая ошибка. Администратор уже уведомлен.")
+    finally:
+        await state.clear()
+
+# --- ВЕСТИ С ПОЛЕЙ ---
+@router.message(F.text == "🗞 Вести с полей")
+async def field_news(message: types.Message):
+    """Показывает пользователю текущую ситуацию в мастерской, запрашивая данные с API."""
+    await message.answer("Уточняю у мастера текущую ситуацию, подождите пожалуйста, это недолго...")
+    async with httpx.AsyncClient(timeout=120.0) as client: # Ждать до 120 секунд
+        try:
+            r = await client.get(f"{API_BASE_URL}/api/work-summary")
+            r.raise_for_status()
+            html = md_to_tg_html(r.text)
+            await message.answer(html)
+        except httpx.ReadTimeout:
+            await message.answer("⚠️ Сервер долго отвечает. Попробуйте позже.")
+        except Exception as e:
+            logger.error(f"Ошибка API: {e}")
+            await message.answer("⚠️ Не удалось получить данные с сервера.")
+
+# --- КАРТА ---
+@router.message(F.text == "📍 Как проехать")
+async def send_map(message: types.Message):
+    """Отправляет пользователю карту с указанием местоположения автосервиса."""
+    try:
+        photo = types.FSInputFile("./maps/map.png")
+        await message.answer_photo(photo, caption="Мы находимся здесь:")
+        await message.answer_location(latitude=55.7558, longitude=37.6173) # Ваши координаты
+    except Exception as e:
+        logger.error(f"Map error: {e}")
+        await message.answer("Не удалось загрузить карту.")
+
+# --- EMERGENCY ---
+@router.message(F.text == "🆘 Emergency")
+async def emergency_start(message: types.Message, state: FSMContext):
+    """
+    Начинаем процесс экстренной заявки. 
+    Просим пользователя отправить голосовое сообщение с описанием проблемы.
+    """
+
+    await message.answer("Пожалуйста, запишите голосовое сообщение с описанием проблемы. "
+                         "Мы создадим экстренную заявку.")
+    await state.set_state(EmergencyState.waiting_for_voice)
+
+@router.message(EmergencyState.waiting_for_voice, F.voice)
+async def handle_emergency_voice(message: types.Message, state: FSMContext):
+    """ 
+    Обрабатывает полученное голосовое сообщение, пересылает его админу 
+    и создает экстренную заявку в БД.
+    """
+    # 1. Пересылаем админу
+    await bot.forward_message(chat_id=MASTER_ID,
+                              from_chat_id=message.chat.id,
+                              message_id=message.message_id)
+
+    # 2. Создаем экстренную заявку
+    emergency_data = {
+        "client_name": message.from_user.full_name,
+        "phone_number": None,
+        "tg_name": message.from_user.full_name,
+        "telegram_id": str(message.from_user.id),
+        "description": "ЭКСТРЕННО: Голосовое сообщение",
+        "status": 2 # Статус Экстренная
+    }
+    async with httpx.AsyncClient() as client:
+        await client.post(f"{API_BASE_URL}/api/orders", json=emergency_data)
+
+    await message.answer("Ваше сообщение получено, свяжемся с вами в ближайшее время!",
+                         reply_markup=main_menu())
+    await state.clear()
+
+# --- ГАРАЖ ---
+
+@router.message(F.text == "🚗 Мой гараж")
+async def show_garage(message: types.Message,  user_id: str = None):
+    """Показывает список зарегистрированных машин пользователя с кнопками удаления."""
+    uid = user_id or str(message.from_user.id)
+    vehicles = await get_user_vehicles_data(uid)
+
+    if not vehicles:
+        return await message.answer("В вашем гараже пока нет автомобилей.")
+
+    response = "<b>🏠 Ваш гараж</b>\n"
+
+    # Создаем клавиатуру со списком машин
+    kb = []
+    for v in vehicles:
+        btn_text = f" {v['brand']} ({v['license_plate']})  ❌"
+        # callback_data содержит госномер, чтобы знать, что удалять
+        cb_data = f"del_v_{v['license_plate']}"
+        kb.append([InlineKeyboardButton(text=btn_text, callback_data=cb_data)])
+
+    markup = InlineKeyboardMarkup(inline_keyboard=kb)
+    await message.answer(response, reply_markup=markup, parse_mode="HTML")
+
+# Обработка удаления машины
+@router.callback_query(F.data.startswith("del_v_"))
+async def process_delete_car(callback: types.CallbackQuery):
+    """ 
+    Обрабатывает запрос на удаление автомобиля из гаража. 
+    Вызывает API для удаления и обновляет список.
+    """
+    plate = callback.data.replace("del_v_", "")
+    uid = str(callback.from_user.id)
+
+    try:
+        success = await delete_vehicle(uid, plate)
+        if success:
+            await callback.answer("✅ Автомобиль удален")
+            await show_garage(callback.message, user_id=uid)
+        else:
+            logger.warning(f"Не удалось удалить авто {plate} для пользователя {uid}")
+            await callback.answer("❌ Ошибка удаления. Возможно, есть активные заказы.", show_alert=True)
+    except Exception as e:
+        logger.exception(f"Сбой при удалении авто {plate}")
+        await callback.answer("🚨 Произошла внутренняя ошибка", show_alert=True)

@@ -1,0 +1,64 @@
+<!-- templates/modal_add.html -->
+<div id="modal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-[100]">
+    <div class="bg-white p-6 rounded-lg shadow-xl w-full max-w-3xl">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-xl font-bold text-gray-800">Регистрация прибывшего клиента</h2>
+            <button onclick="closeModal()" class="text-gray-500 hover:text-black text-2xl">&times;</button>
+        </div>
+        
+        <div class="overflow-y-auto max-h-96">
+            {% if pending %}
+            <table class="w-full text-left border-collapse">
+                <thead class="bg-gray-100">
+                    <tr>
+                        <th class="p-3 border text-sm font-semibold">Клиент</th>
+                        <th class="p-3 border text-sm font-semibold">Авто</th>
+                        <th class="p-3 border text-sm font-semibold">Рег Номер</th>
+                        <th class="p-3 border text-sm font-semibold">Действие</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in pending %}
+                    <tr class="border-b hover:bg-gray-50 transition">
+                        <td class="p-3">{{ p.client_name }}</td>
+                        <td class="p-3">{{ p.brand }}</td>
+                        <td class="p-3 font-mono text-blue-700">
+                            {% if p.license_plate %}{{ p.license_plate }}{% else %}-{% endif %}
+                        </td>
+                        <td class="p-3">
+                            <div class="flex items-center space-x-3">
+                                <!-- Кнопка Принять (авто-нумерация) -->
+                                <button hx-post="/assign_number/{{p.id}}" 
+                                        hx-target="#modal-container"
+                                        class="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700 transition">
+                                    Принять
+                                </button>
+                                
+                                <!-- Кнопка Удалить -->
+                                <button hx-delete="/delete/{{p.id}}" 
+                                        hx-confirm="Удалить заявку {{p.client_name}}?"
+                                        hx-target="#modal-container"
+                                        class="text-red-500 hover:text-red-700 text-sm font-medium underline">
+                                    Удалить
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="p-12 text-center">
+                <p class="text-gray-500">Очередь пуста.</p>
+                <p class="text-xs text-gray-400 mt-1">(Нет заявок с описанием, но без номера заказа)</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="mt-6 flex justify-end">
+            <button onclick="closeModal()" class="bg-gray-200 text-gray-700 px-6 py-2 rounded hover:bg-gray-300 transition">
+                Закрыть
+            </button>
+        </div>
+    </div>
+</div>
