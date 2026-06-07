@@ -7,6 +7,7 @@ from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text, t
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 import datetime
+import os
 
 # 1. Вычисляем путь к корню проекта (на уровень выше папки backend)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
