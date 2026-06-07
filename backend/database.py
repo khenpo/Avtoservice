@@ -8,9 +8,13 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 import datetime
 
-# Настройка подключения к SQLite
-# Все данные будут храниться в файле service_station.db
-SQLALCHEMY_DATABASE_URL = "sqlite:///../service_station.db"
+# 1. Вычисляем путь к корню проекта (на уровень выше папки backend)
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DB_PATH = os.path.join(BASE_DIR, "service_station.db")
+
+# 2. Формируем URL для SQLite (три слэша для относительного, четыре для абсолютного в некоторых системах, 
+# но sqlite:////abspath работает везде в Linux)
+SQLALCHEMY_DATABASE_URL = f"sqlite:///{DB_PATH}"
 
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}

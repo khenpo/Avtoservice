@@ -86,8 +86,6 @@ async def bot_webhook(request: Request):
 # Создаем таблицы
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI()
-
 current_dir = os.path.dirname(os.path.abspath(__file__))
 templates_path = os.path.join(current_dir, "templates")
 
