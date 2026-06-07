@@ -339,7 +339,9 @@ async def send_map(callback: types.CallbackQuery):
             await callback.message.delete()
         except:
             pass
-
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(current_dir)
+        MAP_PATH = os.path.join(project_root, "maps", "map.png")
         photo = types.FSInputFile("/maps/map.png")
         await callback.message.answer_photo(photo,
                                             caption="Мы находимся здесь: 55.7558, 37.6173",
