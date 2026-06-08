@@ -30,11 +30,11 @@ async def fetch_api(method: str, endpoint: str, data: dict = None):
                 response = await client.get(url)
             else:
                 response = await client.post(url, json=data)
-            
+
             # Если статус 4xx или 5xx, будет выброшено исключение
             response.raise_for_status()
             return response.json()
-        
+
         except httpx.HTTPStatusError as e:
             # Логируем как ERROR, чтобы пришло уведомление в ТГ админу
             logger.error(f"Ошибка API {e.response.status_code} | {url} | Ответ: {e.response.text}")
@@ -85,7 +85,7 @@ def md_to_tg_html(md_text: str) -> str:
     html = markdown.markdown(md_text)
 
     # 2. УДАЛЯЕМ теги, которые Telegram не понимает
-    
+
     # Заменяем <hr> (горизонтальная линия) на текстовый разделитель
     html = re.sub(r'<hr\s*/?>', '—' * 15 + '\n', html)
 
@@ -94,19 +94,19 @@ def md_to_tg_html(md_text: str) -> str:
 
     # Заменяем заголовки h1-h6 на жирный текст
     html = re.sub(r'<h[1-6]>(.*?)</h[1-6]>', r'<b>\1</b>\n', html)
-    
+
     # Заменяем параграфы на переносы
     html = html.replace('<p>', '').replace('</p>', '\n')
-    
+
     # Заменяем списки
     html = html.replace('<li>', '• ').replace('</li>', '\n')
     html = re.sub(r'</?(ul|ol)>', '', html)
-    
+
     # Заменяем strong/em на b/i (стандарт Telegram)
     html = html.replace('<strong>', '<b>').replace('</strong>', '</b>')
     html = html.replace('<em>', '<i>').replace('</em>', '</i>')
 
     # 3. Убираем множественные пустые строки
     html = re.sub(r'\n\s*\n', '\n\n', html)
-    
+
     return html.strip()

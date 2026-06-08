@@ -13,7 +13,7 @@ import os
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.path.join(BASE_DIR, "service_station.db")
 
-# 2. Формируем URL для SQLite (три слэша для относительного, четыре для абсолютного в некоторых системах, 
+# 2. Формируем URL для SQLite (три слэша для относительного, четыре для абсолютного в некоторых системах,
 # но sqlite:////abspath работает везде в Linux)
 SQLALCHEMY_DATABASE_URL = f"sqlite:///{DB_PATH}"
 

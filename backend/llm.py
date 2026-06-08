@@ -10,19 +10,23 @@ from typing import List
 env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
 load_dotenv(env_path if os.path.exists(env_path) else None)
 
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 OPENROUTER_URL = os.environ.get("OPENROUTER_URL")
 MODEL = os.environ.get("MODEL")
 
 # Пути к файлам промптов
-PROMPTS_DIR = "prompts"
+PROMPTS_DIR = os.path.join(BASE_DIR, "prompts")
 SYSTEM_PROMPT_PATH = os.path.join(PROMPTS_DIR, "system_role.txt")
 USER_PROMPT_PATH = os.path.join(PROMPTS_DIR, "work_summary_template.txt")
 
 API_BASE_URL = os.environ.get("API_BASE_URL") # URL  FastAPI внутри сети Docker
+BASE_URL = os.environ.get("BASE_URL") # URL  FastAPI внутри сети Docker
 
 def read_prompt(file_path: str, default_text: str) -> str:
     """ Читает текст промпта из файла. Если файла нет — возвращает default. """
+    
     try:
         if os.path.exists(file_path):
             with open(file_path, "r", encoding="utf-8") as f:
@@ -63,7 +67,7 @@ async def get_ai_work_summary(orders_list: List[dict]) -> str:
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json",
-        "HTTP-Referer": API_BASE_URL, # Требование OpenRouter
+        "HTTP-Referer": BASE_URL, # Требование OpenRouter
         "X-Title": "ServiceStationApp"
     }
 
