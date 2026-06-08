@@ -84,25 +84,29 @@ def md_to_tg_html(md_text: str) -> str:
     # 1. Конвертируем MD в HTML
     html = markdown.markdown(md_text)
 
-    # 2. УДАЛЯЕМ <br> и <br /> — заменяем их на обычный перенос строки
+    # 2. УДАЛЯЕМ теги, которые Telegram не понимает
+    
+    # Заменяем <hr> (горизонтальная линия) на текстовый разделитель
+    html = re.sub(r'<hr\s*/?>', '—' * 15 + '\n', html)
+
+    # Заменяем <br> на обычный перенос строки
     html = re.sub(r'<br\s*/?>', r'\n', html)
 
-    # 3. Чистим остальные теги, которые Telegram не понимает
     # Заменяем заголовки h1-h6 на жирный текст
     html = re.sub(r'<h[1-6]>(.*?)</h[1-6]>', r'<b>\1</b>\n', html)
-
+    
     # Заменяем параграфы на переносы
     html = html.replace('<p>', '').replace('</p>', '\n')
-
+    
     # Заменяем списки
     html = html.replace('<li>', '• ').replace('</li>', '\n')
     html = re.sub(r'</?(ul|ol)>', '', html)
-
-    # Заменяем strong/em на b/i
+    
+    # Заменяем strong/em на b/i (стандарт Telegram)
     html = html.replace('<strong>', '<b>').replace('</strong>', '</b>')
     html = html.replace('<em>', '<i>').replace('</em>', '</i>')
 
-    # 4. Убираем множественные пустые строки, которые могли возникнуть
+    # 3. Убираем множественные пустые строки
     html = re.sub(r'\n\s*\n', '\n\n', html)
-
+    
     return html.strip()

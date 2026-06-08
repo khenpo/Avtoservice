@@ -7,12 +7,6 @@ import httpx
 from backend.logger_setup import logger
 from typing import List
 
-# Конфигурация OpenRouter
-# Рекомендуется выносить ключ в переменные окружения (.env)
-#OPENROUTER_API_KEY = "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"
-#OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-#MODEL = "nvidia/nemotron-3-super-120b-a12b:free" # Можно заменить на "google/gemini-pro-1.5" или др.
-
 env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
 load_dotenv(env_path if os.path.exists(env_path) else None)
 
