@@ -58,7 +58,7 @@ async def get_ai_work_summary(orders_list: List[dict]) -> str:
 
     user_template = read_prompt(
         USER_PROMPT_PATH,
-        "Проанализируй заявки:\n{formatted_orders}"
+        "Опиши ситуацию::\n{formatted_orders}"
     )
     
     logger.info(system_content)
