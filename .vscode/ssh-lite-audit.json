@@ -1,0 +1,35 @@
+[
+  {
+    "action": "download",
+    "connectionId": "91.108.240.47:22:root",
+    "hostName": "91.108.240.47",
+    "username": "root",
+    "remotePath": "/root/avtoservice/backend/Dockerfile",
+    "localPath": "c:\\Users\\lvov\\AppData\\Local\\Temp\\ssh-lite\\7323df9c\\backend_ef0fb332\\[root@91.108.240.47] Dockerfile",
+    "fileSize": 504,
+    "success": true,
+    "timestamp": "2026-06-08T07:20:41.019Z"
+  },
+  {
+    "action": "download",
+    "connectionId": "91.108.240.47:22:root",
+    "hostName": "91.108.240.47",
+    "username": "root",
+    "remotePath": "/root/avtoservice/logs/backend.log",
+    "localPath": "c:\\Users\\lvov\\AppData\\Local\\Temp\\ssh-lite\\7323df9c\\logs_aba360c0\\[root@91.108.240.47] backend.log",
+    "fileSize": 247802,
+    "success": true,
+    "timestamp": "2026-06-08T07:21:15.978Z"
+  },
+  {
+    "action": "download",
+    "connectionId": "91.108.240.47:22:root",
+    "hostName": "91.108.240.47",
+    "username": "root",
+    "remotePath": "/root/avtoservice/.env",
+    "localPath": "c:\\Users\\lvov\\AppData\\Local\\Temp\\ssh-lite\\7323df9c\\avtoservice_42d37766\\[root@91.108.240.47] .env",
+    "fileSize": 711,
+    "success": true,
+    "timestamp": "2026-06-08T08:24:05.911Z"
+  }
+]

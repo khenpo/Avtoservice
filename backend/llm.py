@@ -63,10 +63,6 @@ async def get_ai_work_summary(orders_list: List[dict]) -> str:
         USER_PROMPT_PATH,
         "Опиши ситуацию::\n{formatted_orders}"
     )
-    logger.info(SYSTEM_PROMPT_PATH)
-    logger.info(system_content)
-    logger.info(USER_PROMPT_PATH)
-    logger.info(user_template)
 
     # Вставляем данные в шаблон
     final_user_prompt = user_template.format(formatted_orders=formatted_orders)
