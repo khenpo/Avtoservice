@@ -13,6 +13,7 @@ services:
       - ./service_station.db:/app/service_station.db
       - ./logs:/app/logs
       - ./maps:/app/maps
+      - ./backend/prompts:/app/backend/prompts
     depends_on:
       - redis
 

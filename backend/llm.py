@@ -7,17 +7,20 @@ import httpx
 from backend.logger_setup import logger
 from typing import List
 
+BASE_DIR = Path(__file__).resolve().parent # Это папка backend/
+
 env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
 load_dotenv(env_path if os.path.exists(env_path) else None)
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 OPENROUTER_URL = os.environ.get("OPENROUTER_URL")
 MODEL = os.environ.get("MODEL")
 
 # Пути к файлам промптов
-PROMPTS_DIR = os.path.join(BASE_DIR, "prompts")
+PROMPTS_DIR = env_path / "prompts"
+
+#PROMPTS_DIR = os.path.join(BASE_DIR, "prompts")
 SYSTEM_PROMPT_PATH = os.path.join(PROMPTS_DIR, "system_role.txt")
 USER_PROMPT_PATH = os.path.join(PROMPTS_DIR, "work_summary_template.txt")
 
