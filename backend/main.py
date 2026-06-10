@@ -701,7 +701,8 @@ async def get_work_summary(db: Session = Depends(get_db)):
     # Выбираем только активные (незавершенные) заявки с присвоенным номером
     active_orders = db.query(Application).filter(
         Application.order_number.is_not(None),
-        Application.status != 7
+        Application.status != 6, # не выполнена
+        Application.status != 7 # не завершена
     ).all()
 
     if not active_orders:
