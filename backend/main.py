@@ -615,7 +615,7 @@ async def create_external_order(order_data: ExternalOrder, db: Session = Depends
         note=order_data.note,
         status=order_data.status,
         # order_number остается NULL, чтобы заявка попала в очередь "Добавить"
-        date=datetime.datetime.now()
+        date=datetime.now()
     )
 
     db.add(new_app)
