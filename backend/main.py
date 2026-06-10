@@ -404,15 +404,24 @@ async def get_edit_modal(app_id: int, request: Request, db: Session = Depends(ge
 # --- МОДАЛКА: ЗАВЕРШИТЬ ---
 
 @app.get("/modals/complete/{app_id}")
-async def get_complete_modal(app_id: int, request: Request,_=Depends(get_current_user)):
+async def get_complete_modal(app_id: int, request: Request,
+                             db: Session = Depends(get_db),
+                             _=Depends(get_current_user)):
     """
     Возвращает модальное окно для завершения заявки.    
      - Здесь оператор вводит пробег и нажимает "Завершить"
     """
+    
+    # Находим заявку в базе данных
+    app_obj = db.query(Application).filter(Application.id == app_id).first()
+    
     return templates.TemplateResponse(
         request,
         "modal_complete.html",
-        {"app_id": app_id}
+            {
+                "app_id": app_id,
+                "app": app_obj
+            }
     )
 
 
@@ -566,7 +575,7 @@ async def create_order(
     # 3. Если валидация прошла, создаем объект БД из валидированных данных
     # .model_dump() превращает Pydantic-модель обратно в словарь
     new_app = Application(**validated_order.model_dump())
-    new_app.date = datetime.datetime.now()
+    new_app.date = datetime.now()
 
     # Логика автоматического присвоения номера
     if assign_now == "on":
