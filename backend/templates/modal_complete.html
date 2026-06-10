@@ -1,25 +1,34 @@
+<!-- modal_complete.html -->
 <div id="modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
     <div class="bg-white p-6 rounded-lg w-full max-w-sm shadow-xl">
         <h2 class="text-xl font-bold mb-4">Завершить работу</h2>
         <p class="text-sm text-gray-600 mb-4">Введите текущий пробег для закрытия заявки.</p>
         
         <form hx-post="/complete/{{ app_id }}" hx-target="#modal-container">
-            <div class="mb-4">
+            <!-- Блок поля ввода -->
+            <div class="mb-6">
                 <label class="block text-sm font-medium text-gray-700">Текущий пробег (км)</label>
                 <input type="number" 
                        name="mileage" 
                        id="mileage" 
                        required
-                       # Добавляем или изменяем этот атрибут:
                        value="{{ app.mileage if app.mileage else '' }}"
                        placeholder="Введите пробег автомобиля"
                        class="mt-1 block w-full border border-gray-300 rounded-md p-2 shadow-sm focus:ring-blue-500 focus:border-blue-500"> 
-                            
-                <div class="flex justify-end space-x-3">
-                    <button type="button" onclick="closeModal()" class="bg-gray-300 px-4 py-2 rounded-md">Отмена</button>
-                    <button type="submit" class="bg-orange-600 text-white px-4 py-2 rounded-md hover:bg-orange-700">Завершить</button>
-                </div>
             </div> 
+
+            <!-- Блок кнопок вынесен отдельно и выровнен по правому краю -->
+            <div class="flex justify-end space-x-3">
+                <button type="button" 
+                        onclick="closeModal()" 
+                        class="bg-gray-300 hover:bg-gray-400 text-gray-800 px-4 py-2 rounded-md transition">
+                    Отмена
+                </button>
+                <button type="submit" 
+                        class="bg-orange-600 text-white px-4 py-2 rounded-md hover:bg-orange-700 transition">
+                    Завершить
+                </button>
+            </div>
         </form>
     </div>
 </div>
