@@ -208,7 +208,7 @@ async def process_mileage(message: types.Message, state: FSMContext):
         "brand": user_data['brand'],
         "license_plate": user_data['license_plate'],
         "vin": user_data.get('vin'),
-        "description": description_text,
+        "description": user_data['description'],
         "mileage": mileage,  # Передаем пробег
         "status": 1
     }
