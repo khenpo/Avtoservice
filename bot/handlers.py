@@ -258,7 +258,7 @@ async def cmd_status(callback: types.CallbackQuery):
     for o in orders:
         num = o.get('order_number') or "В очереди"
         status = o.get('status_name', 'Неизвестно')
-        description = re.sub(r'(^.{50}[^\s]*).+', r'\1...', o.get('status_name')) #обрезаем до 50 символов
+        description = re.sub(r'(^.{50}[^\s]*).+', r'\1...', o.get('description')) #обрезаем до 50 символов
         
         response += (f"<b>№ {num}</b>\n🚗 {o['brand']} ({o['license_plate']})\n"
                      f"🛠 {description}\n"
