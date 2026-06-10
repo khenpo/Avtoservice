@@ -7,7 +7,7 @@ main.py
 from contextlib import asynccontextmanager
 import os
 
-from fastapi import FastAPI, HTTPException, Request, Form, Depends, Response
+from fastapi import FastAPI, HTTPException, Request, Form, Depends, Response, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -15,7 +15,6 @@ from sqlalchemy.orm import Session
 from pydantic import ValidationError
 
 import time
-import datetime
 from typing import List
 
 
@@ -27,6 +26,16 @@ from backend.logger_setup import setup_logging, logger
 from aiogram import types
 from bot.bot_instance import bot, dp
 from bot.handlers import router # ваш роутер с хендлерами
+
+import bcrypt
+# Хак для совместимости passlib и bcrypt в Python 3.12+
+if not hasattr(bcrypt, "__about__"):
+    class About:
+        __version__ = bcrypt.__version__
+    bcrypt.__about__ = About()
+
+from jose import jwt, JWTError
+from datetime import datetime, timedelta, timezone
 
 
 # Инициализируем логи при старте
@@ -42,6 +51,67 @@ load_dotenv(env_path if os.path.exists(env_path) else None)
 BASE_URL = os.getenv("BASE_URL") # Например, https://yourdomain.com
 WEBHOOK_PATH = f"/webhook/{os.getenv('BOT_TOKEN')}"
 WEBHOOK_URL = f"{BASE_URL}{WEBHOOK_PATH}"
+
+
+SECRET_KEY = os.getenv("SECRET_KEY") 
+ALGORITHM = os.getenv("ALGORITHM", "HS256")
+# Хешируем пароль из .env один раз при старте
+RAW_ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
+
+def get_password_hash(password: str) -> str:
+    """Хеширование пароля через bcrypt напрямую"""
+    # Bcrypt требует байты, обрезаем до 72 байт
+    password_bytes = password.encode('utf-8')[:72]
+    # Генерируем соль и хеш
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(password_bytes, salt)
+    return hashed.decode('utf-8')
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Проверка пароля через bcrypt напрямую"""
+    try:
+        return bcrypt.checkpw(
+            plain_password.encode('utf-8')[:72],
+            hashed_password.encode('utf-8')
+        )
+    except Exception as e:
+        logger.error(f"Ошибка проверки пароля: {e}")
+        return False
+    
+ADMIN_PASSWORD_HASH = get_password_hash(RAW_ADMIN_PASSWORD)
+
+def create_access_token(data: dict):
+    """
+    Создаем токен  для пользователя
+    """
+    
+    to_encode = data.copy()
+    expire = datetime.now(timezone.utc) + timedelta(days=7)
+    to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+async def get_current_user(request: Request):
+    """
+    Зависимость для проверки авторизации через Cookies.
+    """
+    token = request.cookies.get("access_token")
+    redirect_to_login = RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
+    
+    if not token:
+        # Если это HTMX запрос, шлем спец. заголовок для редиректа всей страницы
+        if request.headers.get("HX-Request"):
+            return Response(headers={"HX-Redirect": "/login"})
+        raise HTTPException(status_code=303, detail="Not authenticated", headers={"Location": "/login"})
+
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username != "admin":
+            raise HTTPException(status_code=status.HTTP_303_SEE_OTHER, headers={"Location": "/login"})
+    except JWTError:
+        raise HTTPException(status_code=status.HTTP_303_SEE_OTHER, headers={"Location": "/login"})
+    
+    return username
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -159,6 +229,32 @@ async def log_requests(request: Request, call_next):
     )
     return response
 
+# --- РОУТЫ АВТОРИЗАЦИИ ---
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request):
+    return templates.TemplateResponse(request, "login.html", {"error": None})
+
+@app.post("/login")
+async def login(
+    response: Response, 
+    password: str = Form(...), 
+    db: Session = Depends(get_db)
+):
+    if verify_password(password, ADMIN_PASSWORD_HASH):
+        token = create_access_token(data={"sub": "admin"})
+        # Редирект на главную панель после входа
+        res = RedirectResponse(url="/tasks", status_code=status.HTTP_303_SEE_OTHER)
+        res.set_cookie(key="access_token", value=token, httponly=True, samesite="lax")
+        return res
+    
+    return templates.TemplateResponse("login.html", {"request": {}, "error": "Неверный пароль"})
+
+@app.get("/logout")
+async def logout():
+    res = RedirectResponse(url="/login")
+    res.delete_cookie("access_token")
+    return res
 
 
 # --- ГЛАВНАЯ СТРАНИЦА ---
@@ -166,7 +262,7 @@ async def log_requests(request: Request, call_next):
 @app.get("/", response_class=HTMLResponse)
 async def root_stub():
     """
-    Красивая заглушка для корневой страницы сервера
+    Заглушка для корневой страницы сервера
     """
     return """
     <!DOCTYPE html>
@@ -174,7 +270,7 @@ async def root_stub():
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Автосервис - Telegram Бот</title>
+        <title>Автосервис AVTOTAL- Telegram Бот</title>
         <style>
             body {
                 font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -218,12 +314,11 @@ async def root_stub():
             <p>Добро пожаловать! Мы используем систему управления заказами по ремонту автомобилей.</p>
             <p>Для записи на сервис, проверки статуса заказа или связи с мастером используйте нашего официального бота:</p>
             
-            <!-- ЗАМЕНИТЕ ССЫЛКУ НА ВАШЕГО БОТА -->
-            <a href="https://t.me/abtotal_test_bot" class="btn">Открыть Telegram Бота</a>
+            <a href="https://t.me/avtotal_bot" class="btn">Открыть Telegram Бота</a>
             
             <div class="footer">
                 © 2026 Система управления автосервисом<br>
-                г. Москва, проспект 60-лет Октября, д. 11
+                г. Москва, проспект 60-лет Октября, д. 11А, Строение 13
             </div>
         </div>
     </body>
@@ -233,7 +328,7 @@ async def root_stub():
 # Страница с текущими заказами (для оператора)
 
 @app.get("/tasks", response_class=HTMLResponse)
-async def index(request: Request, db: Session = Depends(get_db)):
+async def index(request: Request, db: Session = Depends(get_db),_=Depends(get_current_user)):
     """
     Отображение главной страницы со списком заявок.
      - Выбираем из БД все заявки, которые уже имеют номер (принятые в работу) 
@@ -256,7 +351,7 @@ async def index(request: Request, db: Session = Depends(get_db)):
 # --- СПИСОК (HTMX PARTIAL) ---
 
 @app.get("/list", response_class=HTMLResponse)
-async def get_list(request: Request, db: Session = Depends(get_db)):
+async def get_list(request: Request, db: Session = Depends(get_db),_=Depends(get_current_user)):
     """
     Возвращает только таблицу со списком заявок для HTMX обновления.
     """
@@ -274,7 +369,7 @@ async def get_list(request: Request, db: Session = Depends(get_db)):
 # --- МОДАЛКА: ДОБАВИТЬ ---
 
 @app.get("/modals/add", response_class=HTMLResponse)
-async def get_add_modal(request: Request, db: Session = Depends(get_db)):
+async def get_add_modal(request: Request, db: Session = Depends(get_db),_=Depends(get_current_user)):
     """
     Возвращает модальное окно для принятия в работу новой заявки.
     """
@@ -292,7 +387,7 @@ async def get_add_modal(request: Request, db: Session = Depends(get_db)):
 # --- МОДАЛКА: ИЗМЕНИТЬ ---
 
 @app.get("/modals/edit/{app_id}")
-async def get_edit_modal(app_id: int, request: Request, db: Session = Depends(get_db)):
+async def get_edit_modal(app_id: int, request: Request, db: Session = Depends(get_db),_=Depends(get_current_user)):
     """
     Возвращает модальное окно для редактирования заявки.    
     """
@@ -309,7 +404,7 @@ async def get_edit_modal(app_id: int, request: Request, db: Session = Depends(ge
 # --- МОДАЛКА: ЗАВЕРШИТЬ ---
 
 @app.get("/modals/complete/{app_id}")
-async def get_complete_modal(app_id: int, request: Request):
+async def get_complete_modal(app_id: int, request: Request,_=Depends(get_current_user)):
     """
     Возвращает модальное окно для завершения заявки.    
      - Здесь оператор вводит пробег и нажимает "Завершить"
@@ -323,13 +418,14 @@ async def get_complete_modal(app_id: int, request: Request):
 
 # --- ЛОГИКА ОБРАБОТКИ (POST/DELETE) ---
 
-@app.post("/update/{app_id}")
+@app.post("/update/{app_id}",)
 async def update_app(
     app_id: int,
     status: int = Form(...),
     description: str = Form(...),
     note: str = Form(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user)
 ):
     """
     Обрабатывает изменения заявки из модального окна редактирования.
@@ -347,7 +443,9 @@ async def update_app(
 
 
 @app.post("/complete/{app_id}")
-async def complete_app(app_id: int, mileage: int = Form(...), db: Session = Depends(get_db)):
+async def complete_app(app_id: int, mileage: int = Form(...), 
+                       db: Session = Depends(get_db),
+                       _=Depends(get_current_user)):
     """
     Обрабатывает изменения заявки из модального окна редактирования.
      - Обновляет статус, описание и примечание в БД.    
@@ -365,7 +463,7 @@ async def complete_app(app_id: int, mileage: int = Form(...), db: Session = Depe
 
 
 @app.delete("/delete/{app_id}")
-async def delete_app(app_id: int, db: Session = Depends(get_db)):
+async def delete_app(app_id: int, db: Session = Depends(get_db),_=Depends(get_current_user)):
     """
     Удаляет заявку из БД.
      - На главной странице есть кнопка "Удалить", которая вызывает этот эндпоинт через HTMX.
@@ -384,7 +482,7 @@ async def delete_app(app_id: int, db: Session = Depends(get_db)):
 # --- СТРАНИЦА СОЗДАНИЯ НОВОЙ ЗАЯВКИ ---
 
 @app.get("/new-request", response_class=HTMLResponse)
-async def new_request_page(request: Request):
+async def new_request_page(request: Request,_=Depends(get_current_user)):
     """Отображение страницы для создания новой заявки.
      - Здесь оператор может ввести данные о клиенте и описать проблему.
      - При отправке формы данные будут валидированы через Pydantic и сохранены в БД."""
@@ -398,7 +496,7 @@ async def new_request_page(request: Request):
 # Присвоение номера наряда (из очереди) ---
 
 @app.post("/assign_number/{app_id}")
-async def assign_number(app_id: int, db: Session = Depends(get_db)):
+async def assign_number(app_id: int, db: Session = Depends(get_db),_=Depends(get_current_user)):
     """Присваивает номер наряда заявке из очереди "Добавить"."""
 
     app_obj = db.query(Application).filter(Application.id == app_id).first()
@@ -429,7 +527,8 @@ async def create_order(
     note: str = Form(None),
     status: int = Form(1),
     assign_now: str = Form(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user)
 ):
     """
     Ввод записи о новой заявке при редактировании в форме /create-request.
@@ -482,7 +581,7 @@ async def create_order(
 
 
 @app.get("/archive", response_class=HTMLResponse)
-async def archive_page(request: Request, db: Session = Depends(get_db)):
+async def archive_page(request: Request, db: Session = Depends(get_db),_=Depends(get_current_user)):
     """
     Оторажение списка истории  заказов
     """
@@ -642,7 +741,7 @@ async def delete_vehicle(telegram_id: str, license_plate: str, db: Session = Dep
 
 
 @app.get("/requests", response_class=HTMLResponse)
-async def requests_page(request: Request, db: Session = Depends(get_db)):
+async def requests_page(request: Request, db: Session = Depends(get_db),_=Depends(get_current_user)):
     """
     Страница просмотра новых заявок, которые еще не приняты в работу 
     (у них нет номера наряда).
@@ -663,7 +762,7 @@ async def requests_page(request: Request, db: Session = Depends(get_db)):
 # --- СТРАНИЦА КЛИЕНТОВ ---
 
 @app.get("/clients", response_class=HTMLResponse)
-async def clients_page(request: Request, db: Session = Depends(get_db)):
+async def clients_page(request: Request, db: Session = Depends(get_db),_=Depends(get_current_user)):
     """Отображение списка всех клиентов (где description is NULL)"""
     clients = db.query(Application).filter(Application.description.is_(None)).all()
     return templates.TemplateResponse(
@@ -675,12 +774,15 @@ async def clients_page(request: Request, db: Session = Depends(get_db)):
 # --- МОДАЛКА: ДОБАВИТЬ/РЕДАКТИРОВАТЬ КЛИЕНТА ---
 
 @app.get("/modals/client/add", response_class=HTMLResponse)
-async def get_add_client_modal(request: Request):
+async def get_add_client_modal(request: Request,_=Depends(get_current_user)):
     """Возвращает модальное окно для добавления нового клиента"""    
     return templates.TemplateResponse(request, "modal_client.html", {"client": None})
 
 @app.get("/modals/client/edit/{client_id}", response_class=HTMLResponse)
-async def get_edit_client_modal(client_id: int, request: Request, db: Session = Depends(get_db)):
+async def get_edit_client_modal(client_id: int, request: Request, 
+                                db: Session = Depends(get_db),
+                                _=Depends(get_current_user)
+                                ):
     """Возвращает модальное окно для редактирования клиента по его ID"""
     client = db.query(Application).filter(Application.id == client_id).first()
     return templates.TemplateResponse(request, "modal_client.html", {"client": client})
@@ -697,7 +799,8 @@ async def save_client(
     brand: str = Form(None),
     license_plate: str = Form(None),
     vin: str = Form(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user)
 ):
     """Сохранение данных клиента"""
     if client_id:
@@ -720,7 +823,10 @@ async def save_client(
 # --- РЕДАКТИРОВАНИЕ ВХОДЯЩЕЙ ЗАЯВКИ (БЕЗ НОМЕРА) ---
 
 @app.get("/modals/request/edit/{app_id}", response_class=HTMLResponse)
-async def get_request_edit_modal(app_id: int, request: Request, db: Session = Depends(get_db)):
+async def get_request_edit_modal(app_id: int, request: Request, 
+                                 db: Session = Depends(get_db),
+                                 _=Depends(get_current_user)
+                                 ):
     """Модальное окно редактирования новой заявки до её принятия в работу"""
     app_obj = db.query(Application).filter(Application.id == app_id).first()
     return templates.TemplateResponse(
@@ -734,7 +840,8 @@ async def update_pending_request(
     app_id: int,
     description: str = Form(...),
     note: str = Form(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user)
 ):
     """Сохранение изменений описания и примечания для входящей заявки"""
     app_obj = db.query(Application).filter(Application.id == app_id).first()
@@ -748,7 +855,7 @@ async def update_pending_request(
 # --- ПОДТВЕРЖДЕНИЕ ЗАЯВКИ (СТАТУС 3) ---
 
 @app.post("/requests/confirm/{app_id}")
-async def confirm_request(app_id: int, db: Session = Depends(get_db)):
+async def confirm_request(app_id: int, db: Session = Depends(get_db),_=Depends(get_current_user)):
     """Перевод заявки в статус 'Подтверждена' (3) без присвоения номера наряда"""
     app_obj = db.query(Application).filter(Application.id == app_id).first()
     if app_obj:
@@ -759,7 +866,7 @@ async def confirm_request(app_id: int, db: Session = Depends(get_db)):
 
 # Обновим также эндпоинт получения списка для страницы новых заявок (Partial)
 @app.get("/requests/list", response_class=HTMLResponse)
-async def get_requests_list(request: Request, db: Session = Depends(get_db)):
+async def get_requests_list(request: Request, db: Session = Depends(get_db),_=Depends(get_current_user)):
     """Возвращает только таблицу со списком новых заявок для HTMX обновления 
         на странице /requests
         - Выбираем заявки без номера, где описание не пустое

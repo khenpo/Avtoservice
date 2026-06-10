@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Вход в систему</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 flex items-center justify-center h-screen">
+    <div class="bg-white p-8 rounded-lg shadow-2xl w-96">
+        <h1 class="text-2xl font-bold mb-6 text-center">🔐 Вход для мастера</h1>
+        <form action="/login" method="post" class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Пароль</label>
+                <input type="password" name="password" required 
+                       class="mt-1 block w-full border border-gray-300 rounded-md p-2 shadow-sm focus:ring-blue-500 border-blue-500">
+            </div>
+            <button type="submit" class="w-full bg-blue-600 text-white p-2 rounded-md hover:bg-blue-700 transition">
+                Войти
+            </button>
+        </form>
+        {% if error %}
+        <p class="text-red-500 text-sm mt-4 text-center">{{ error }}</p>
+        {% endif %}
+    </div>
+</body>
+</html>

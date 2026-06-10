@@ -4,6 +4,7 @@
 """
 import httpx
 import os
+import re
 from aiogram import Router, F, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -144,7 +145,14 @@ async def car_selected(callback: types.CallbackQuery, state: FSMContext):
 
 @router.message(CreateOrder.waiting_for_description)
 async def process_description(message: types.Message, state: FSMContext):
-    """Обработка описания проблемы при создании заявки. Проверяем длину и отправляем данные на сервер."""
+    """Обработка описания проблемы при создании заявки. 
+    Проверяем длину и отправляем данные на сервер.
+    """
+    # Проверка на отмену
+    if message.text == "Отмена":
+        await state.clear()
+        return await message.answer("Действие отменено.", reply_markup=main_menu())
+    
     description_text = message.text.strip() if message.text else ""
 
     if len(description_text) < 5:
@@ -153,8 +161,45 @@ async def process_description(message: types.Message, state: FSMContext):
             reply_markup=cancel_inline_kb()
         )
         return
+    
+    # Сохраняем введенное описание проблемы в FSM
+    await state.update_data(description=message.text)
+    
+    # Переходим к следующему шагу — запросу пробега
+    await message.answer(
+        "Введите текущий пробег вашего автомобиля (в километрах, только цифры):",
+        reply_markup=types.ReplyKeyboardMarkup(
+            keyboard=[[types.KeyboardButton(text="Отмена")]], 
+            resize_keyboard=True
+        )
+    )
+    
+    await state.set_state(CreateOrder.waiting_for_mileage)
+    
+@router.message(CreateOrder.waiting_for_mileage)
+async def process_mileage(message: types.Message, state: FSMContext):
+    """ 
+    Обработка ввода пробега
+    """
+    # Проверка на отмену
+    if message.text == "Отмена":
+        await state.clear()
+        return await message.answer("Действие отменено.", reply_markup=main_menu())
+
+    mileage_text = message.text.strip()
+    
+    # Валидация: проверяем, что введены только цифры
+    if not mileage_text.isdigit():
+        await message.answer("Пожалуйста, введите пробег числом (используйте только цифры):")
+        return
+    
+    mileage = int(mileage_text)
+    if mileage < 0:
+        await message.answer("Пробег не может быть отрицательным. Пожалуйста, введите корректное число:")
+        return
 
     user_data = await state.get_data()
+    
     order_data = {
         "client_name": user_data.get('client_name'),
         "phone_number": user_data.get('phone_number'),
@@ -164,19 +209,36 @@ async def process_description(message: types.Message, state: FSMContext):
         "license_plate": user_data['license_plate'],
         "vin": user_data.get('vin'),
         "description": description_text,
+        "mileage": mileage,  # Передаем пробег
         "status": 1
     }
-
-    async with httpx.AsyncClient() as client:
-        try:
+    
+    try:
+        logger.info(f"Отправка новой заявки с пробегом для пользователя {message.from_user.id}")
+        
+        async with httpx.AsyncClient(timeout=10.0) as client:
             r = await client.post(f"{API_BASE_URL}/api/orders", json=order_data)
+            
             if r.status_code == 201:
-                await message.answer("✅ Ваша заявка принята!", reply_markup=main_menu())
+                await message.answer(
+                    "✅ Заявка успешно принята! Мы свяжемся с вами после обработки.", 
+                    reply_markup=main_menu()
+                )
             else:
-                await message.answer("❌ Ошибка сохранения.", reply_markup=main_menu())
-        except Exception:
-            await message.answer("🆘 Ошибка связи с сервером.", reply_markup=main_menu())
-    await state.clear()
+                logger.error(f"Бэкенд вернул код {r.status_code}: {r.text}")
+                await message.answer(
+                    "❌ Не удалось сохранить заявку. Пожалуйста, попробуйте позже.", 
+                    reply_markup=main_menu()
+                )
+    except Exception as e:
+        logger.exception(f"Ошибка при связи с сервером API во время создания заявки: {e}")
+        await message.answer(
+            "🆘 Произошла ошибка при отправке данных на сервер. Мы уже работаем над этим.", 
+            reply_markup=main_menu()
+        )
+    finally:
+        # В любом случае сбрасываем состояние, чтобы пользователь не "завис"
+        await state.clear()
 
 # --- СТАТУС ---
 
@@ -196,7 +258,10 @@ async def cmd_status(callback: types.CallbackQuery):
     for o in orders:
         num = o.get('order_number') or "В очереди"
         status = o.get('status_name', 'Неизвестно')
+        description = re.sub(r'(^.{50}[^\s]*).+', r'\1...', o.get('status_name')) #обрезаем до 50 символов
+        
         response += (f"<b>№ {num}</b>\n🚗 {o['brand']} ({o['license_plate']})\n"
+                     f"🛠 {description}\n"
                      f"Статус: <code>{status}</code>\n\n")
 
     await safe_edit_or_answer(callback, response, reply_markup=main_menu())

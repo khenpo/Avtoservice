@@ -31,5 +31,55 @@
     "fileSize": 711,
     "success": true,
     "timestamp": "2026-06-08T08:24:05.911Z"
+  },
+  {
+    "action": "edit",
+    "connectionId": "91.108.240.47:22:root",
+    "hostName": "91.108.240.47",
+    "username": "root",
+    "remotePath": "/root/avtoservice/.env",
+    "localPath": "c:\\Users\\lvov\\AppData\\Local\\Temp\\ssh-lite\\7323df9c\\avtoservice_42d37766\\[root@91.108.240.47] .env",
+    "fileSize": 591,
+    "bytesChanged": 0,
+    "diff": "--- Summary: +0 added, -0 removed, ~1 changed ---\n-5: BOT_TOKEN = \"8829666953:AAH2G-yI3tsGJojP-IeL0hlUhZ3YYbRPjH0\"\n+5: BOT_TOKEN = \"8883754541:AAE-n0B1MWcQKA0nvLQoRythNKQOpxh6DCg\"",
+    "success": true,
+    "timestamp": "2026-06-08T09:48:32.959Z"
+  },
+  {
+    "action": "download",
+    "connectionId": "91.108.240.47:22:root",
+    "hostName": "91.108.240.47",
+    "username": "root",
+    "remotePath": "/root/avtoservice/.env",
+    "localPath": "c:\\Users\\lvov\\AppData\\Local\\Temp\\ssh-lite\\7323df9c\\avtoservice_42d37766\\[root@91.108.240.47] .env",
+    "fileSize": 711,
+    "success": true,
+    "timestamp": "2026-06-09T03:10:11.095Z"
+  },
+  {
+    "action": "edit",
+    "connectionId": "91.108.240.47:22:root",
+    "hostName": "91.108.240.47",
+    "username": "root",
+    "remotePath": "/root/avtoservice/.env",
+    "localPath": "c:\\Users\\lvov\\AppData\\Local\\Temp\\ssh-lite\\7323df9c\\avtoservice_42d37766\\[root@91.108.240.47] .env",
+    "fileSize": 580,
+    "bytesChanged": 11,
+    "diff": "--- Summary: +0 added, -0 removed, ~1 changed ---\n-3: MODEL = \"google/gemma-4-31b-it:free\" # Можно заменить на \"google/gemini-pro-1.5\" или др.\n+3: MODEL = \"openrouter/free\" # Можно заменить на \"google/gemini-pro-1.5\" или др.",
+    "success": true,
+    "timestamp": "2026-06-09T04:00:46.141Z"
+  },
+  {
+    "action": "edit",
+    "connectionId": "91.108.240.47:22:root",
+    "hostName": "91.108.240.47",
+    "username": "root",
+    "remotePath": "/root/avtoservice/.env",
+    "localPath": "c:\\Users\\lvov\\AppData\\Local\\Temp\\ssh-lite\\7323df9c\\avtoservice_42d37766\\[root@91.108.240.47] .env",
+    "fileSize": 603,
+    "bytesChanged": 23,
+    "diff": "--- Summary: +0 added, -0 removed, ~1 changed ---\n-3: MODEL = \"openrouter/free\" # Можно заменить на \"google/gemini-pro-1.5\" или др.\n+3: MODEL = \"nvidia/nemotron-3-super-120b-a12b:free\" # Можно заменить на \"google/gemini-pro-1.5\" или др.",
+    "success": true,
+    "timestamp": "2026-06-09T04:02:45.656Z"
   }
 ]

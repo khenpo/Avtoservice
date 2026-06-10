@@ -10,6 +10,7 @@ class Registration(StatesGroup):
 class CreateOrder(StatesGroup):
     selecting_car = State()
     waiting_for_description = State()
+    waiting_for_mileage = State()      # Ввод текущего пробега
 
 class EmergencyState(StatesGroup):
     waiting_for_voice = State()
