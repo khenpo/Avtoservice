@@ -70,16 +70,43 @@ async def safe_edit_or_answer(
     Безопасное редактирование сообщения с автоматическим 
     откатом на удаление/отправку нового, если редактирование невозможно.
     """
+# /app/bot/handlers.py
+from datetime import datetime, timezone
+from aiogram.exceptions import TelegramBadRequest
+
+async def safe_edit_or_answer(
+    callback: types.CallbackQuery, 
+    text: str, 
+    reply_markup=None, 
+    parse_mode="HTML"
+):
+    """
+    Безопасное редактирование с защитой от устаревших сообщений (>48 часов).
+    """
+    # 1. ЗАЩИТА ОТ УСТАРЕВШИХ КНОПОК
+    # Вычисляем возраст сообщения. Если ему больше 48 часов — блокируем клик.
+    message_age = datetime.now(timezone.utc) - callback.message.date
+    if message_age.days >= 2:
+        try:
+            # Показываем красивое нативное всплывающее окно с кнопкой "ОК"
+            await callback.answer(
+                "⚠️ Это меню устарело (ему больше 48 часов).\n\n"
+                "Пожалуйста, отправьте команду /start для вызова актуального меню.", 
+                show_alert=True
+            )
+        except Exception:
+            pass
+        return
+
     try:
-        # 1. Пытаемся отредактировать текущее сообщение
+        # 2. Пытаемся отредактировать текущее сообщение
         await callback.message.edit_text(text, reply_markup=reply_markup, parse_mode=parse_mode)
-        # Гасим индикатор загрузки на кнопке
         await callback.answer()
         
     except TelegramBadRequest as e:
         err_msg = str(e)
         
-        # Кейс А: Текст сообщения не изменился (пользователь нажал кнопку, но статус тот же)
+        # Если текст сообщения абсолютно такой же (статус не изменился)
         if "message is not modified" in err_msg:
             try:
                 await callback.answer("Данные уже актуальны")
@@ -87,36 +114,26 @@ async def safe_edit_or_answer(
                 pass
             return
 
-        # Кейс Б: Сообщение нельзя отредактировать (нет текста, сообщение не найдено и т.д.)
-        if any(phrase in err_msg for phrase in ["there is no text in the message to edit", "message to edit not found"]):
-            
-            # Пытаемся удалить старое сообщение (оборачиваем в try-except на случай > 48 часов)
-            try:
-                await callback.message.delete()
-            except TelegramBadRequest as delete_err:
-                # Если удалить нельзя (например, > 48 часов), просто логируем это как дебаг и идем дальше
-                logger.debug(f"Не удалось удалить старое сообщение: {delete_err}")
-            except Exception as delete_err:
-                logger.debug(f"Альтернативная ошибка удаления: {delete_err}")
+        # Для ВСЕХ остальных ошибок редактирования (например, если в сообщении была картинка/карта)
+        logger.warning(f"Редактирование не удалось ({err_msg}). Переходим к удалению и отправке нового.")
+        
+        # Пытаемся удалить старое сообщение
+        try:
+            await callback.message.delete()
+        except Exception as delete_err:
+            logger.debug(f"Не удалось удалить старое сообщение: {delete_err}")
 
-            # Отправляем новое сообщение взамен старого
-            try:
-                await callback.message.answer(text, reply_markup=reply_markup, parse_mode=parse_mode)
-            except Exception as answer_err:
-                logger.error(f"Не удалось отправить новое сообщение взамен старого: {answer_err}")
-            
-            # Гасим индикатор загрузки на кнопке в любом случае
-            try:
-                await callback.answer()
-            except Exception:
-                pass
-        else:
-            # Если это какая-то другая неизвестная ошибка Telegram API
-            try:
-                await callback.answer("Ошибка обновления меню. Пожалуйста, отправьте команду /start заново.", show_alert=True)
-            except Exception:
-                pass
-            raise e
+        # Отправляем новое сообщение взамен старого
+        try:
+            await callback.message.answer(text, reply_markup=reply_markup, parse_mode=parse_mode)
+        except Exception as answer_err:
+            logger.error(f"Не удалось отправить новое сообщение: {answer_err}")
+        
+        # Гасим часики на кнопке в любом случае
+        try:
+            await callback.answer()
+        except Exception:
+            pass
 
 # --- ОБЩИЕ ОБРАБОТЧИКИ ---
 
