@@ -127,8 +127,7 @@ async def lifespan(app: FastAPI):
     
     try:
         await bot.set_my_commands([
-            types.BotCommand(command="start", description="📱 Главное меню / Запуск бота"),
-            types.BotCommand(command="menu_status", description="📊 Статус моих заявок")
+            types.BotCommand(command="start", description="📱 Главное меню / Запуск бота")
         ])
         logger.info("Нативные команды бота успешно зарегистрированы.")
     except Exception as e:
