@@ -24,6 +24,7 @@ from backend.schemas import ExternalOrder, OrderShortResponse, VehicleResponse
 from backend.logger_setup import setup_logging, logger
 
 from aiogram import types
+
 from bot.bot_instance import bot, dp
 from bot.handlers import router # ваш роутер с хендлерами
 
@@ -124,6 +125,16 @@ async def lifespan(app: FastAPI):
     # Подключаем обработчики
     dp.include_router(router)
     
+    try:
+        await bot.set_my_commands([
+            types.BotCommand(command="start", description="📱 Главное меню / Запуск бота"),
+            types.BotCommand(command="status", description="📊 Статус моих заявок")
+        ])
+        logger.info("Нативные команды бота успешно зарегистрированы.")
+    except Exception as e:
+        logger.error(f"Не удалось зарегистрировать команды бота: {e}")
+
+
     # Устанавливаем вебхук
     await bot.set_webhook(
         url=WEBHOOK_URL,
