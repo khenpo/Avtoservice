@@ -45,17 +45,17 @@ logger.info("Приложение запущено")
 
 from dotenv import load_dotenv
 
-# Укажите ваш токен здесь или в переменных окружения
+# Путь к переменным окружения
 env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
 load_dotenv(env_path if os.path.exists(env_path) else None)
 
-BASE_URL = os.getenv("BASE_URL") # Например, https://yourdomain.com
+BASE_URL = os.getenv("BASE_URL") 
 WEBHOOK_PATH = f"/webhook/{os.getenv('BOT_TOKEN')}"
 WEBHOOK_URL = f"{BASE_URL}{WEBHOOK_PATH}"
 
-
 SECRET_KEY = os.getenv("SECRET_KEY") 
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
+
 # Хешируем пароль из .env один раз при старте
 RAW_ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
 
@@ -166,6 +166,7 @@ async def bot_webhook(request: Request):
 # Создаем таблицы
 Base.metadata.create_all(bind=engine)
 
+# Динмаически определяем пути для независимой от среды выполнения работы
 current_dir = os.path.dirname(os.path.abspath(__file__))
 templates_path = os.path.join(current_dir, "templates")
 

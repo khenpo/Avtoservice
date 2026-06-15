@@ -11,7 +11,7 @@ import os
 
 # 1. Вычисляем путь к корню проекта (на уровень выше папки backend)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DB_PATH = os.path.join(BASE_DIR, "service_station.db")
+DB_PATH = os.path.join(BASE_DIR, "db","service_station.db")
 
 # 2. Формируем URL для SQLite (три слэша для относительного, четыре для абсолютного в некоторых системах,
 # но sqlite:////abspath работает везде в Linux)

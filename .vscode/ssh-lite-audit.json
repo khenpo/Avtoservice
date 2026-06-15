@@ -105,5 +105,38 @@
     "diff": "--- Summary: +3 added, -0 removed, ~2 changed ---\n-13: REDIS_URL = \"redis://redis:6379/0\"\n+13: ADMIN_PASSWORD = \"denisavtotal1979\"\n-14: \n+14: SECRET_KEY = \"acvtotal_super_secret_key_5757\" \n+15: \n+16: REDIS_URL = \"redis://redis:6379/0\"\n+17: ",
     "success": true,
     "timestamp": "2026-06-10T06:24:21.065Z"
+  },
+  {
+    "action": "download",
+    "connectionId": "91.108.240.47:22:root",
+    "hostName": "91.108.240.47",
+    "username": "root",
+    "remotePath": "/root/avtoservice/service_station.db",
+    "localPath": "c:\\Users\\lvov\\AppData\\Local\\Temp\\ssh-lite\\7323df9c\\avtoservice_42d37766\\[root@91.108.240.47] service_station.db",
+    "fileSize": 12288,
+    "success": true,
+    "timestamp": "2026-06-15T11:48:42.533Z"
+  },
+  {
+    "action": "download",
+    "connectionId": "91.108.240.47:22:root",
+    "hostName": "91.108.240.47",
+    "username": "root",
+    "remotePath": "/root/avtoservice/service_station.db",
+    "localPath": "c:\\Users\\lvov\\AppData\\Local\\Temp\\ssh-lite\\7323df9c\\avtoservice_42d37766\\[root@91.108.240.47] service_station.db",
+    "fileSize": 12288,
+    "success": true,
+    "timestamp": "2026-06-15T11:51:48.322Z"
+  },
+  {
+    "action": "download",
+    "connectionId": "91.108.240.47:22:root",
+    "hostName": "91.108.240.47",
+    "username": "root",
+    "remotePath": "/root/avtoservice/service_station.db",
+    "localPath": "c:\\Users\\lvov\\AppData\\Local\\Temp\\ssh-lite\\7323df9c\\avtoservice_42d37766\\[root@91.108.240.47] service_station.db",
+    "fileSize": 12288,
+    "success": true,
+    "timestamp": "2026-06-15T12:05:12.591Z"
   }
 ]
