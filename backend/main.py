@@ -597,7 +597,7 @@ async def create_order(
     db.add(new_app)
     db.commit()
 
-    return RedirectResponse(url="/", status_code=303)
+    return RedirectResponse(url="/tasks", status_code=303)
 
 
 @app.get("/archive", response_class=HTMLResponse)
