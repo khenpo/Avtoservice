@@ -82,26 +82,21 @@ async def safe_edit_or_answer(
             
         try:
             await callback.message.answer(text, reply_markup=reply_markup, parse_mode=parse_mode)
-            await callback.answer()
         except Exception as answer_err:
             logger.error(f"Не удалось отправить новое сообщение: {answer_err}")
+        await safe_callback_answer(callback)
         return # Завершаем выполнение, так как уже всё отправили
     
     # 2. ОБРАБОТКА СВЕЖИХ СООБЩЕНИЙ (<48 часов)
     try:
         # 2. Пытаемся отредактировать текущее сообщение
         await callback.message.edit_text(text, reply_markup=reply_markup, parse_mode=parse_mode)
-        await callback.answer()
-        
     except TelegramBadRequest as e:
         err_msg = str(e)
         
         # Если текст сообщения абсолютно такой же (статус не изменился)
         if "message is not modified" in err_msg:
-            try:
-                await callback.answer("Данные уже актуальны")
-            except Exception:
-                pass
+            await safe_callback_answer(callback, "Данные уже актуальны")
             return
 
         # Для ВСЕХ остальных ошибок редактирования (например, если в сообщении была картинка/карта)
@@ -119,11 +114,31 @@ async def safe_edit_or_answer(
         except Exception as answer_err:
             logger.error(f"Не удалось отправить новое сообщение: {answer_err}")
         
-        # Гасим часики на кнопке в любом случае
-        try:
-            await callback.answer()
-        except Exception:
-            pass
+    # Гасим часики на кнопке в любом случае        
+    safe_callback_answer(callback)
+
+async def safe_callback_answer(callback: types.CallbackQuery, text: str = None, show_alert: bool = False):
+    """
+    Безопасный ответ на инлайн-кнопку. 
+    Перехватывает ошибку 'query is too old', если сервер отвечал дольше 15 секунд.
+    """
+    try:
+        if text:
+            await safe_callback_answer(callback, text, show_alert=show_alert)
+        else:
+            await safe_callback_answer(callback)
+    except TelegramBadRequest as e:
+        err = str(e).lower()
+        if "query is too old" in err or "query id is invalid" in err:
+            # Если хотели показать alert, но не успели (таймаут Telegram),
+            # шлем обычным сообщением в чат, чтобы клиент всё равно увидел текст.
+            if text:
+                try:
+                    await callback.message.answer(f"ℹ️ {text}")
+                except Exception:
+                    pass
+    except Exception:
+        pass
 
 # --- ОБЩИЕ ОБРАБОТЧИКИ ---
 
@@ -145,7 +160,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
 async def callback_cancel(callback: types.CallbackQuery, state: FSMContext):
     """Общий обработчик для кнопки 'Отмена'. Сбрасывает состояние и возвращает главное меню."""
     await state.clear()
-    await callback.answer()
+    await safe_callback_answer(callback)
     await safe_edit_or_answer(callback, "Выберите нужное действие:", reply_markup=main_menu())
 
 
@@ -317,7 +332,7 @@ async def cmd_status(callback: types.CallbackQuery):
     orders = await get_active_orders(uid)
 
     if orders is None:
-        return await callback.answer("Ошибка сервера", show_alert=True)
+        return await safe_callback_answer(callback, "Ошибка сервера", show_alert=True)
 
     if not orders:
         return await safe_edit_or_answer(callback, "У вас нет активных заявок.", reply_markup=main_menu())
@@ -433,7 +448,7 @@ async def reg_final(message: types.Message, state: FSMContext):
 @router.callback_query(F.data == "menu_news")
 async def field_news(callback: types.CallbackQuery):
     """ Здесь показывается анализ загрузки сервиса работами"""
-    await callback.answer()
+    await safe_callback_answer(callback)
 
     # Используем try-except на случай, если нажали под фото
     try:
@@ -471,7 +486,7 @@ async def field_news(callback: types.CallbackQuery):
 @router.callback_query(F.data == "menu_map")
 async def send_map(callback: types.CallbackQuery):
     """ Отправляет карту с местоположением сервиса. """
-    await callback.answer()
+    await safe_callback_answer(callback)
     try:
         # Пытаемся удалить текстовое меню перед отправкой фото
         try:
@@ -549,10 +564,10 @@ async def process_delete_car(callback: types.CallbackQuery):
 
     success = await delete_vehicle(uid, plate)
     if success:
-        await callback.answer("✅ Удалено")
+        await safe_callback_answer(callback, "✅ Удалено")
         await show_garage(callback, user_id=uid)
     else:
-        await callback.answer("❌ Ошибка (возможно, есть активный заказ)", show_alert=True)
+        await safe_callback_answer(callback, "❌ Ошибка (возможно, есть активный заказ)", show_alert=True)
 
 async def set_main_menu(c_bot: Bot):
     """Устанавливает команды бота, которые отображаются в интерфейсе Telegram."""
