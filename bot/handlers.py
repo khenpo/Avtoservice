@@ -449,16 +449,23 @@ async def reg_final(message: types.Message, state: FSMContext):
 async def field_news(callback: types.CallbackQuery):
     """ Здесь показывается анализ загрузки сервиса работами"""
     await safe_callback_answer(callback)
+    
+    wait_text = "⏳ <b>Получение информации...</b>\nМастер анализирует ситуацию, это может занять пару минут."
 
     # Используем try-except на случай, если нажали под фото
     try:
-        await callback.message.edit_text("⏳ <b>Получение информации...</b>\n"\
-            "Мастер анализирует ситуацию, это может занять пару минут.", 
-                                         parse_mode="HTML")
+        await callback.message.edit_text(wait_text, parse_mode="HTML")
     except TelegramBadRequest:
-        # Если это было фото (карта), удаляем его и пишем текст
-        await callback.message.delete()
-        await callback.message.answer("⏳ <b>Получение информации...</b>", parse_mode="HTML")
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        # Просто отправляем новое сообщение
+        try:
+            await callback.message.answer(wait_text, parse_mode="HTML")
+        except Exception as e:
+            logger.error(f"Не удалось отправить уведомление о загрузке: {e}")
+            return # Прерываемся, если не смогли отправить        
 
     # Выполняем запрос к API
     async with httpx.AsyncClient(timeout=120.0) as client:
