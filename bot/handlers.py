@@ -37,7 +37,7 @@ def main_menu():
         ],
         [
             InlineKeyboardButton(text="📍 Как проехать", callback_data="menu_map"),
-            InlineKeyboardButton(text="🛠 Загрузка Cервиса", callback_data="menu_news")
+            InlineKeyboardButton(text="🛠 Загрузка Cервиса ", callback_data="menu_news")
         ],
         [
             InlineKeyboardButton(text="🆘 Emergency", callback_data="menu_emergency"),
