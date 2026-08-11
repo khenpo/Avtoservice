@@ -57,6 +57,7 @@ def setup_logging(service_name: str = "app"):
     logger.add(
         f"logs/{service_name}.log", # Будет logs/bot.log и logs/backend.log
         rotation="10 MB",
+        retention="6 month",   
         level="INFO",
         format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {name}:{function}:{line} - {message}",
         compression="zip",

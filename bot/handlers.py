@@ -13,6 +13,8 @@ from aiogram.exceptions import TelegramBadRequest
 
 from loguru import logger
 from dotenv import load_dotenv
+from datetime import datetime, timezone
+
 
 from bot.bot_instance import bot
 from bot.states import Registration, CreateOrder, EmergencyState
@@ -35,7 +37,7 @@ def main_menu():
         ],
         [
             InlineKeyboardButton(text="📍 Как проехать", callback_data="menu_map"),
-            InlineKeyboardButton(text="🗞 Вести с полей", callback_data="menu_news")
+            InlineKeyboardButton(text="🛠 Загрузка Автосервиса", callback_data="menu_news")
         ],
         [
             InlineKeyboardButton(text="🆘 Emergency", callback_data="menu_emergency"),
@@ -54,25 +56,7 @@ def cancel_inline_kb():
 
 # --- ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ---
 
-async def safe_edit_or_answer(callback: types.CallbackQuery, text: str,
-                              reply_markup: InlineKeyboardMarkup = None, parse_mode: str = "HTML"):
-    """
-    Универсальный метод: пытается отредактировать сообщение, 
-    а если это невозможно (например, сообщение-фото), удаляет старое и шлет новое.
-    """
-async def safe_edit_or_answer(
-    callback: types.CallbackQuery, 
-    text: str, 
-    reply_markup=None, 
-    parse_mode="HTML"
-):
-    """
-    Безопасное редактирование сообщения с автоматическим 
-    откатом на удаление/отправку нового, если редактирование невозможно.
-    """
 # /app/bot/handlers.py
-from datetime import datetime, timezone
-from aiogram.exceptions import TelegramBadRequest
 
 async def safe_edit_or_answer(
     callback: types.CallbackQuery, 
@@ -82,22 +66,27 @@ async def safe_edit_or_answer(
 ):
     """
     Безопасное редактирование с защитой от устаревших сообщений (>48 часов).
+    Вычисляем возраст сообщения. Если ему больше 48 часов — блокируем клик, 
+    просто удаляем старое сообщение  отправляем новое в самый низ чата.
     """
-    # 1. ЗАЩИТА ОТ УСТАРЕВШИХ КНОПОК
-    # Вычисляем возраст сообщения. Если ему больше 48 часов — блокируем клик.
+    
     message_age = datetime.now(timezone.utc) - callback.message.date
+    
+    # 1. ОБРАБОТКА СТАРЫХ СООБЩЕНИЙ (>48 часов)
     if message_age.days >= 2:
         try:
-            # Показываем красивое нативное всплывающее окно с кнопкой "ОК"
-            await callback.answer(
-                "⚠️ Это меню устарело (ему больше 48 часов).\n\n"
-                "Пожалуйста, отправьте команду /start для вызова актуального меню.", 
-                show_alert=True
-            )
-        except Exception:
-            pass
-        return
-
+            await callback.message.delete()
+        except Exception as delete_err:
+            logger.debug(f"Не удалось удалить старое сообщение: {delete_err}")
+            
+        try:
+            await callback.message.answer(text, reply_markup=reply_markup, parse_mode=parse_mode)
+            await callback.answer()
+        except Exception as answer_err:
+            logger.error(f"Не удалось отправить новое сообщение: {answer_err}")
+        return # Завершаем выполнение, так как уже всё отправили
+    
+    # 2. ОБРАБОТКА СВЕЖИХ СООБЩЕНИЙ (<48 часов)
     try:
         # 2. Пытаемся отредактировать текущее сообщение
         await callback.message.edit_text(text, reply_markup=reply_markup, parse_mode=parse_mode)
@@ -286,6 +275,24 @@ async def process_mileage(message: types.Message, state: FSMContext):
                     "✅ Заявка успешно принята! Мы свяжемся с вами после обработки.", 
                     reply_markup=main_menu()
                 )
+                
+                #  УВЕДОМЛЕНИЕ МАСТЕРУ ---
+                if MASTER_ID:
+                    # Получаем username, если есть, иначе полное имя
+                    client_tg = f"@{message.from_user.username}" if message.from_user.username else message.from_user.full_name
+                    
+                    master_msg = (
+                        f"<b>НОВАЯ ЗАЯВКА (TG)</b>\n\n"
+                        f"<b>Клиент:</b> {order_data.get('client_name')} ({client_tg})\n"
+                        f"<b>Телефон:</b> {order_data.get('phone_number') or 'Не указан'}\n"
+                        f"<b>Авто:</b> {order_data['brand']} (<code>{order_data['license_plate']}</code>)\n"
+                        f"<b>Пробег:</b> {mileage} км\n\n"
+                        f"<b>Описание проблемы:</b>\n<i>{order_data['description']}</i>"
+                    )
+                    try:
+                        await bot.send_message(chat_id=MASTER_ID, text=master_msg, parse_mode="HTML")
+                    except Exception as e:
+                        logger.error(f"Не удалось отправить уведомление мастеру: {e}")
             else:
                 logger.error(f"Бэкенд вернул код {r.status_code}: {r.text}")
                 await message.answer(
