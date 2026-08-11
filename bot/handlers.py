@@ -220,10 +220,8 @@ async def process_description(message: types.Message, state: FSMContext):
     # Переходим к следующему шагу — запросу пробега
     await message.answer(
         "Введите текущий пробег вашего автомобиля (в километрах, только цифры):",
-        reply_markup=types.ReplyKeyboardMarkup(
-            keyboard=[[types.KeyboardButton(text="Отмена")]], 
-            resize_keyboard=True
-        )
+         reply_markup=cancel_inline_kb() 
+        
     )
     
     await state.set_state(CreateOrder.waiting_for_mileage)
@@ -430,7 +428,7 @@ async def reg_final(message: types.Message, state: FSMContext):
             await message.answer("❌ Ошибка регистрации.", reply_markup=main_menu())
     await state.clear()
 
-# --- ВЕСТИ С ПОЛЕЙ ---
+# --- ВЕСТИ С ПОЛЕЙ  - текущая загрузка работами ---
 
 @router.callback_query(F.data == "menu_news")
 async def field_news(callback: types.CallbackQuery):
