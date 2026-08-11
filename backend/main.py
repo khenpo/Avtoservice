@@ -335,6 +335,84 @@ async def root_stub():
     </body>
     </html>
     """
+
+# ссылки
+@app.get("/netlinkspage7723", response_class=HTMLResponse)
+async def document_page(request: Request):
+    """
+    Страница просмотра встроенного Google-документа
+    """
+    return """
+        <!DOCTYPE html>
+        <html lang="ru">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Документ Автосервиса</title>
+            <style>
+                /* Убираем отступы, чтобы документ занял весь экран */
+                body, html {
+                    margin: 0;
+                    padding: 0;
+                    height: 100%;
+                    overflow: hidden; 
+                    background-color: #f8f9fa; /* Светлый фон для контраста */
+                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                }
+                
+                .header {
+                    background-color: #1a1a1a;
+                    color: #f39c12;
+                    padding: 15px 20px;
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+                }
+                
+                .header a {
+                    color: #fff;
+                    text-decoration: none;
+                    background: #333;
+                    padding: 8px 15px;
+                    border-radius: 5px;
+                    transition: background 0.3s;
+                }
+
+                .header a:hover {
+                    background: #555;
+                }
+
+                /* Контейнер для iframe, который займет всю оставшуюся высоту */
+                .iframe-container {
+                    width: 100%;
+                    height: calc(100vh - 60px); /* 100% высоты минус высота шапки */
+                    border: none;
+                }
+
+                iframe {
+                    width: 100%;
+                    height: 100%;
+                    border: none;
+                }
+            </style>
+        </head>
+        <body>
+            <!-- Небольшая шапка с кнопкой "Назад" (можно удалить, если не нужна) -->
+            <div class="header">
+                <strong>📄 Информация</strong>
+                <a href="javascript:history.back()">⬅ Назад</a>
+            </div>
+
+            <!-- Встроенный Google Документ -->
+            <div class="iframe-container">
+                <iframe src="https://docs.google.com/document/d/e/2PACX-1vScrW-73tvqJhV4KXzNMjs0fYLStyCa5Z2QtdzJbUG48w68sYh-_ztuFUSfVWcxGoymDDTYOg-cDroz/pub?embedded=true"></iframe>
+            </div>
+        </body>
+        </html>
+    """
+
+
     
 # Страница с текущими заказами (для оператора)
 
