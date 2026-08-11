@@ -10,7 +10,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./service_station.db:/app/service_station.db
+      - ./db:/app/db
       - ./logs:/app/logs
       - ./maps:/app/maps
       - ./backend/prompts:/app/backend/prompts

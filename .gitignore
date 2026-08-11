@@ -7,6 +7,7 @@ venv/
 .venv/
 env/
 .env
+db
 
 # Кэш Python
 __pycache__/
@@ -15,3 +16,4 @@ __pycache__/
 logs/
 
 ngrok*
+backend/prompts/system_role.txt
