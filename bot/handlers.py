@@ -2,10 +2,13 @@
 Этот файл содержит все обработчики сообщений и коллбеков для Telegram бота.
 Обновлено: Полная поддержка InlineKeyboardMarkup и защита от ошибок редактирования.
 """
-import httpx
+
+from datetime import datetime, timezone
 import os
 import re
-from aiogram import Router, F, types
+import httpx
+
+from aiogram import Router, F, types, Bot
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import BotCommand, InlineKeyboardMarkup, InlineKeyboardButton, ErrorEvent
@@ -13,8 +16,6 @@ from aiogram.exceptions import TelegramBadRequest
 
 from loguru import logger
 from dotenv import load_dotenv
-from datetime import datetime, timezone
-
 
 from bot.bot_instance import bot
 from bot.states import Registration, CreateOrder, EmergencyState
@@ -238,19 +239,19 @@ async def process_mileage(message: types.Message, state: FSMContext):
         return await message.answer("Действие отменено.", reply_markup=main_menu())
 
     mileage_text = message.text.strip()
-    
+
     # Валидация: проверяем, что введены только цифры
     if not mileage_text.isdigit():
         await message.answer("Пожалуйста, введите пробег числом (используйте только цифры):")
         return
-    
+
     mileage = int(mileage_text)
     if mileage < 0:
         await message.answer("Пробег не может быть отрицательным. Пожалуйста, введите корректное число:")
         return
 
     user_data = await state.get_data()
-    
+
     order_data = {
         "client_name": user_data.get('client_name'),
         "phone_number": user_data.get('phone_number'),
@@ -263,24 +264,24 @@ async def process_mileage(message: types.Message, state: FSMContext):
         "mileage": mileage,  # Передаем пробег
         "status": 1
     }
-    
+
     try:
         logger.info(f"Отправка новой заявки с пробегом для пользователя {message.from_user.id}")
-        
+   
         async with httpx.AsyncClient(timeout=10.0) as client:
             r = await client.post(f"{API_BASE_URL}/api/orders", json=order_data)
-            
+    
             if r.status_code == 201:
                 await message.answer(
                     "✅ Заявка успешно принята! Мы свяжемся с вами после обработки.", 
                     reply_markup=main_menu()
                 )
-                
+
                 #  УВЕДОМЛЕНИЕ МАСТЕРУ ---
                 if MASTER_ID:
                     # Получаем username, если есть, иначе полное имя
                     client_tg = f"@{message.from_user.username}" if message.from_user.username else message.from_user.full_name
-                    
+
                     master_msg = (
                         f"<b>НОВАЯ ЗАЯВКА (TG)</b>\n\n"
                         f"<b>Клиент:</b> {order_data.get('client_name')} ({client_tg})\n"
@@ -328,7 +329,7 @@ async def cmd_status(callback: types.CallbackQuery):
         num = o.get('order_number') or "В очереди"
         status = o.get('status_name', 'Неизвестно')
         description = re.sub(r'(^.{50}[^\s]*).+', r'\1...', o.get('description')) #обрезаем до 50 символов
-        
+
         response += (f"<b>№ {num}</b>\n🚗 {o['brand']} ({o['license_plate']})\n"
                      f"🛠 {description}\n"
                      f"Статус: <code>{status}</code>\n\n")
@@ -388,14 +389,20 @@ async def reg_name_input(message: types.Message, state: FSMContext):
 
 @router.message(Registration.waiting_for_phone_number)
 async def reg_phone_number(message: types.Message, state: FSMContext):
-    """Обработка ввода номера телефона при регистрации. Проверяем формат и сохраняем в состоянии."""
+    """
+        Обработка ввода номера телефона при регистрации. 
+        Проверяем формат и сохраняем в состоянии.
+    """
     await state.update_data(phone_number=message.text)
     await message.answer("Марка и модель авто:", reply_markup=cancel_inline_kb())
     await state.set_state(Registration.waiting_for_brand)
 
 @router.message(Registration.waiting_for_brand)
 async def reg_brand(message: types.Message, state: FSMContext):
-    """Обработка ввода марки и модели авто при регистрации. Сохраняем в состоянии и запрашиваем VIN."""
+    """
+        Обработка ввода марки и модели авто при регистрации. 
+        Сохраняем в состоянии и запрашиваем VIN.
+    """
     await state.update_data(brand=message.text, telegram_id=str(message.from_user.id))
     await message.answer("VIN номер:", reply_markup=cancel_inline_kb())
     await state.set_state(Registration.waiting_for_vin)
@@ -475,8 +482,8 @@ async def send_map(callback: types.CallbackQuery):
             pass
         current_dir = os.path.dirname(os.path.abspath(__file__))
         project_root = os.path.dirname(current_dir)
-        MAP_PATH = os.path.join(project_root, "maps", "map.png")
-        photo = types.FSInputFile(MAP_PATH)
+        map_path = os.path.join(project_root, "maps", "map.png")
+        photo = types.FSInputFile(map_path)
         await callback.message.answer_photo(photo,
                                             caption="Мы находимся здесь: 55.7558, 37.6173",
                                             reply_markup=main_menu())
@@ -549,9 +556,9 @@ async def process_delete_car(callback: types.CallbackQuery):
     else:
         await callback.answer("❌ Ошибка (возможно, есть активный заказ)", show_alert=True)
 
-async def set_main_menu(bot: bot):
+async def set_main_menu(c_bot: Bot):
     """Устанавливает команды бота, которые отображаются в интерфейсе Telegram."""
     main_menu_commands = [
-        BotCommand(command="/start", description="Запустить бота / Главное меню"),
+        BotCommand(command="start", description="Запустить бота / Главное меню"),
     ]
-    await bot.set_my_commands(main_menu_commands)
+    await c_bot.set_my_commands(main_menu_commands)
