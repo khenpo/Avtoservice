@@ -1,9 +1,9 @@
 """Утилиты для работы с API бота и форматирования данных."""
 
-import httpx
 import os
 import markdown
 import re
+import httpx
 from backend.logger_setup import logger
 from dotenv import load_dotenv
 

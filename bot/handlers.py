@@ -451,8 +451,9 @@ async def field_news(callback: types.CallbackQuery):
     await safe_callback_answer(callback)
     
     wait_text = "⏳ <b>Получение информации...</b>\nМастер анализирует ситуацию, это может занять пару минут."
-
-    # Используем try-except на случай, если нажали под фото
+    wait_msg = None
+    
+    # Показываем статус ожидания
     try:
         await callback.message.edit_text(wait_text, parse_mode="HTML")
     except TelegramBadRequest:
@@ -462,7 +463,7 @@ async def field_news(callback: types.CallbackQuery):
             pass
         # Просто отправляем новое сообщение
         try:
-            await callback.message.answer(wait_text, parse_mode="HTML")
+            wait_msg = await callback.message.answer(wait_text, parse_mode="HTML")
         except Exception as e:
             logger.error(f"Не удалось отправить уведомление о загрузке: {e}")
             return # Прерываемся, если не смогли отправить        
@@ -475,9 +476,15 @@ async def field_news(callback: types.CallbackQuery):
 
             html = md_to_tg_html(r.text)
 
-            # Выводим результат, возвращая кнопки главного меню
-            # Используем нашу вспомогательную функцию для безопасности
-            await safe_edit_or_answer(callback, html, reply_markup=main_menu())
+             # Удаляем табличку "⏳ Получение информации..."
+            try:
+                target_to_delete = wait_msg if wait_msg else callback.message
+                await target_to_delete.delete()
+            except Exception:
+                pass
+
+            # Присылаем готовый отчет абсолютно новым сообщением снизу
+            await callback.message.answer(html, reply_markup=main_menu(), parse_mode="HTML")
 
         except httpx.ReadTimeout:
             logger.error("Таймаут API при получении вестей")

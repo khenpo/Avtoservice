@@ -7,7 +7,7 @@ main.py
 from contextlib import asynccontextmanager
 import os
 
-from fastapi import FastAPI, HTTPException, Request, Form, Depends, Response, status
+from fastapi import FastAPI, HTTPException, Request, Form, Depends, Response, status, BackgroundTasks
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -25,6 +25,10 @@ from backend.logger_setup import setup_logging, logger
 
 from aiogram import types
 
+from jose import jwt, JWTError
+from datetime import datetime, timedelta, timezone
+
+
 from bot.bot_instance import bot, dp
 from bot.handlers import router # ваш роутер с хендлерами
 
@@ -35,8 +39,6 @@ if not hasattr(bcrypt, "__about__"):
         __version__ = bcrypt.__version__
     bcrypt.__about__ = About()
 
-from jose import jwt, JWTError
-from datetime import datetime, timedelta, timezone
 
 
 # Инициализируем логи при старте
@@ -155,11 +157,14 @@ app = FastAPI(lifespan=lifespan)
 
 # Эндпоинт для вебхука
 @app.post(WEBHOOK_PATH)
-async def bot_webhook(request: Request):
+async def bot_webhook(request: Request, background_tasks: BackgroundTasks):
     """Прием обновлений от Telegram"""
     update_data = await request.json()
     update = types.Update.model_validate(update_data, context={"bot": bot})
-    await dp.feed_update(bot, update)
+   
+    # Отдаем обработку сообщения в фоновую задачу
+    background_tasks.add_task(dp.feed_update, bot, update)
+    
     return {"status": "ok"}
 
 
