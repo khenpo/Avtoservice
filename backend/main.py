@@ -249,7 +249,6 @@ async def login_page(request: Request):
 @app.post("/login")
 async def login(
     request: Request,
-    response: Response, 
     password: str = Form(...), 
     db: Session = Depends(get_db)
 ):
