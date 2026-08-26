@@ -34,7 +34,7 @@ def main_menu():
     kb = [
         [
             InlineKeyboardButton(text="📝 Заявка", callback_data="menu_order"),
-            InlineKeyboardButton(text="📊 Статус", callback_data="menu_status")
+            InlineKeyboardButton(text="📊 Статус заявок", callback_data="menu_status")
         ],
         [
             InlineKeyboardButton(text="📍 Как проехать", callback_data="menu_map"),
@@ -584,7 +584,9 @@ async def process_delete_car(callback: types.CallbackQuery):
         await safe_callback_answer(callback, "❌ Ошибка (возможно, есть активный заказ)", show_alert=True)
 
 async def set_main_menu(c_bot: Bot):
-    """Устанавливает команды бота, которые отображаются в интерфейсе Telegram."""
+    """Устанавливает команды бота, которые отображаются в интерфейсе Telegram.
+    Используется только при локальном запуске.
+    """
     main_menu_commands = [
         BotCommand(command="start", description="Запустить бота / Главное меню"),
     ]

@@ -3,9 +3,12 @@ main.py
 Основной файл приложения FastAPI для управления заявками в автосервисе.   
 """
 
-# Добавьте RedirectResponse в импорты сверху
-from contextlib import asynccontextmanager
 import os
+import time
+from typing import List
+from datetime import datetime, timedelta, timezone
+
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request, Form, Depends, Response, status, BackgroundTasks
 from fastapi.exceptions import RequestValidationError
@@ -14,25 +17,20 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from pydantic import ValidationError
 
-import time
-from typing import List
-
+from aiogram import types
+from jose import jwt, JWTError
+import bcrypt
+from dotenv import load_dotenv
 
 from backend.database import SessionLocal, engine, Application, Base, generate_next_order_number
 from backend.llm import get_ai_work_summary
 from backend.schemas import ExternalOrder, OrderShortResponse, VehicleResponse
 from backend.logger_setup import setup_logging, logger
 
-from aiogram import types
-
-from jose import jwt, JWTError
-from datetime import datetime, timedelta, timezone
-
 
 from bot.bot_instance import bot, dp
 from bot.handlers import router # ваш роутер с хендлерами
 
-import bcrypt
 # Хак для совместимости passlib и bcrypt в Python 3.12+
 if not hasattr(bcrypt, "__about__"):
     class About:
@@ -40,12 +38,9 @@ if not hasattr(bcrypt, "__about__"):
     bcrypt.__about__ = About()
 
 
-
 # Инициализируем логи при старте
 setup_logging("backend")
 logger.info("Приложение запущено")
-
-from dotenv import load_dotenv
 
 # Путь к переменным окружения
 env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
@@ -80,14 +75,14 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     except Exception as e:
         logger.error(f"Ошибка проверки пароля: {e}")
         return False
-    
+ 
 ADMIN_PASSWORD_HASH = get_password_hash(RAW_ADMIN_PASSWORD)
 
 def create_access_token(data: dict):
     """
     Создаем токен  для пользователя
     """
-    
+
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + timedelta(days=7)
     to_encode.update({"exp": expire})
@@ -99,7 +94,7 @@ async def get_current_user(request: Request):
     """
     token = request.cookies.get("access_token")
     redirect_to_login = RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
-    
+
     if not token:
         # Если это HTMX запрос, шлем спец. заголовок для редиректа всей страницы
         if request.headers.get("HX-Request"):
@@ -113,7 +108,7 @@ async def get_current_user(request: Request):
             raise HTTPException(status_code=status.HTTP_303_SEE_OTHER, headers={"Location": "/login"})
     except JWTError:
         raise HTTPException(status_code=status.HTTP_303_SEE_OTHER, headers={"Location": "/login"})
-    
+
     return username
 
 @asynccontextmanager
@@ -123,10 +118,10 @@ async def lifespan(app: FastAPI):
     """
     # --- ДЕЙСТВИЯ ПРИ ЗАПУСКЕ (STARTUP) ---
     logger.info("Инициализация бота и вебхука...")
-    
+
     # Подключаем обработчики
     dp.include_router(router)
-    
+
     try:
         await bot.set_my_commands([
             types.BotCommand(command="start", description="📱 Главное меню / Запуск бота")
@@ -161,10 +156,10 @@ async def bot_webhook(request: Request, background_tasks: BackgroundTasks):
     """Прием обновлений от Telegram"""
     update_data = await request.json()
     update = types.Update.model_validate(update_data, context={"bot": bot})
-   
+
     # Отдаем обработку сообщения в фоновую задачу
     background_tasks.add_task(dp.feed_update, bot, update)
-    
+
     return {"status": "ok"}
 
 
@@ -193,7 +188,7 @@ def get_db():
         yield db
     finally:
         db.close()
-        
+
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
@@ -201,12 +196,12 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     # Получаем детали ошибки
     details = exc.errors()
     # Логируем как ERROR, чтобы это прилетело в Telegram
-    logger.error(f"Validation Error (422) | Path: {request.url.path} | Details: {details}")
+    logger.warning(f"Validation Error (422) | Path: {request.url.path} | Details: {details}")
 
     return JSONResponse(
         status_code=422,
         content={"message": "Ошибка валидации данных", "details": details},
-    )
+    )   
 
 
 @app.exception_handler(Exception)
@@ -253,6 +248,7 @@ async def login_page(request: Request):
 
 @app.post("/login")
 async def login(
+    request: Request,
     response: Response, 
     password: str = Form(...), 
     db: Session = Depends(get_db)
@@ -263,8 +259,8 @@ async def login(
         res = RedirectResponse(url="/tasks", status_code=status.HTTP_303_SEE_OTHER)
         res.set_cookie(key="access_token", value=token, httponly=True, samesite="lax")
         return res
-    
-    return templates.TemplateResponse("login.html", {"request": {}, "error": "Неверный пароль"})
+
+    return templates.TemplateResponse(request, "login.html", {"request": {}, "error": "Неверный пароль"})
 
 @app.get("/logout")
 async def logout():
@@ -418,7 +414,6 @@ async def document_page(request: Request):
     """
 
 
-    
 # Страница с текущими заказами (для оператора)
 
 @app.get("/tasks", response_class=HTMLResponse)
@@ -505,10 +500,10 @@ async def get_complete_modal(app_id: int, request: Request,
     Возвращает модальное окно для завершения заявки.    
      - Здесь оператор вводит пробег и нажимает "Завершить"
     """
-    
+
     # Находим заявку в базе данных
     app_obj = db.query(Application).filter(Application.id == app_id).first()
-    
+
     return templates.TemplateResponse(
         request,
         "modal_complete.html",

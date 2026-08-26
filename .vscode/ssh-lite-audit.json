@@ -138,5 +138,16 @@
     "fileSize": 12288,
     "success": true,
     "timestamp": "2026-06-15T12:05:12.591Z"
+  },
+  {
+    "action": "download",
+    "connectionId": "91.108.240.47:22:root",
+    "hostName": "91.108.240.47",
+    "username": "root",
+    "remotePath": "/root/avtoservice/logs/backend.log",
+    "localPath": "c:\\Users\\lvov\\AppData\\Local\\Temp\\ssh-lite\\7323df9c\\logs_aba360c0\\[root@91.108.240.47] backend.log",
+    "fileSize": 292598,
+    "success": true,
+    "timestamp": "2026-08-21T09:03:39.129Z"
   }
 ]
